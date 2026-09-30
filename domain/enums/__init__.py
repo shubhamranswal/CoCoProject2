@@ -1,0 +1,113 @@
+"""Domain enumerations for Factory Reliability Command Center."""
+
+from enum import Enum
+
+
+class HealthStatus(str, Enum):
+    HEALTHY = "HEALTHY"
+    DEGRADING = "DEGRADING"
+    CRITICAL = "CRITICAL"
+    UNKNOWN = "UNKNOWN"
+
+
+class MachineState(str, Enum):
+    RUNNING = "RUNNING"
+    IDLE = "IDLE"
+    STOPPED = "STOPPED"
+    FAULTED = "FAULTED"
+    MAINTENANCE = "MAINTENANCE"
+    STARTING = "STARTING"
+    STOPPING = "STOPPING"
+    UNKNOWN = "UNKNOWN"
+
+
+class Severity(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class Priority(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+class AlertStatus(str, Enum):
+    OPEN = "OPEN"
+    INVESTIGATING = "INVESTIGATING"
+    ACTION_PROPOSED = "ACTION_PROPOSED"
+    RESOLVED = "RESOLVED"
+    DISMISSED = "DISMISSED"
+
+
+class InvestigationStatus(str, Enum):
+    CREATED = "CREATED"
+    IN_PROGRESS = "IN_PROGRESS"
+    WAITING_FOR_APPROVAL = "WAITING_FOR_APPROVAL"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CLOSED = "CLOSED"
+
+
+class WorkOrderStatus(str, Enum):
+    DRAFT = "DRAFT"
+    PENDING_APPROVAL = "PENDING_APPROVAL"
+    APPROVED = "APPROVED"
+    SCHEDULED = "SCHEDULED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+
+
+class ApprovalStatus(str, Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    ESCALATED = "ESCALATED"
+
+
+class ActionStatus(str, Enum):
+    PROPOSED = "PROPOSED"
+    APPROVED = "APPROVED"
+    EXECUTED = "EXECUTED"
+    FAILED = "FAILED"
+    VERIFIED = "VERIFIED"
+
+
+class FailureMode(str, Enum):
+    NORMAL_OPERATION = "NORMAL_OPERATION"
+    BEARING_DEGRADATION = "BEARING_DEGRADATION"
+    MOTOR_OVERHEATING = "MOTOR_OVERHEATING"
+    MISALIGNMENT = "MISALIGNMENT"
+    LUBRICATION_FAILURE = "LUBRICATION_FAILURE"
+    SENSOR_FAILURE = "SENSOR_FAILURE"
+    UNPLANNED_DOWNTIME = "UNPLANNED_DOWNTIME"
+
+
+class SensorType(str, Enum):
+    VIBRATION = "VIBRATION"
+    TEMPERATURE = "TEMPERATURE"
+    RPM = "RPM"
+    CURRENT = "CURRENT"
+    PRESSURE = "PRESSURE"
+    FLOW = "FLOW"
+
+
+class TriggerType(str, Enum):
+    EVENT = "EVENT"
+    SCHEDULE = "SCHEDULE"
+    USER = "USER"
+    WORKFLOW = "WORKFLOW"
+    EXTERNAL = "EXTERNAL"
+
+
+class AgentStatus(str, Enum):
+    IDLE = "IDLE"
+    RUNNING = "RUNNING"
+    WAITING_FOR_TOOL = "WAITING_FOR_TOOL"
+    WAITING_FOR_APPROVAL = "WAITING_FOR_APPROVAL"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
