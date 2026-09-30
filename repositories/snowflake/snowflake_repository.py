@@ -671,6 +671,31 @@ class SnowflakeRepository(
             cur.close()
             conn.close()
 
+    def update_work_order(self, work_order: WorkOrder) -> WorkOrder:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "UPDATE FACTORY_MAINTENANCE.WORK_ORDER SET "
+                "status = %s, assigned_to = %s, scheduled_date = %s, completed_at = %s "
+                "WHERE work_order_id = %s",
+                (
+                    work_order.status.value,
+                    work_order.assigned_to,
+                    work_order.scheduled_date.isoformat() if work_order.scheduled_date else None,
+                    work_order.completed_at.isoformat() if work_order.completed_at else None,
+                    work_order.work_order_id,
+                ),
+            )
+            conn.commit()
+            wo = self.get_work_order(work_order.work_order_id)
+            if not wo:
+                raise ValueError(f"WorkOrder {work_order.work_order_id} not found")
+            return wo
+        finally:
+            cur.close()
+            conn.close()
+
     # ReliabilityRepository
     def get_failure_history(self, machine_id: str) -> List[Failure]:
         conn = self.conn_mgr.get_connection()

@@ -107,6 +107,9 @@ class MaintenanceRepository(ABC):
     @abstractmethod
     def update_work_order_status(self, work_order_id: str, status: WorkOrderStatus) -> WorkOrder: ...
 
+    @abstractmethod
+    def update_work_order(self, work_order: WorkOrder) -> WorkOrder: ...
+
 
 class ReliabilityRepository(ABC):
     @abstractmethod

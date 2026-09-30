@@ -265,6 +265,74 @@ class M204ScenarioEngine:
 
         return all_measurements
 
+    def generate_recovery_trajectory(
+        self,
+        num_points: int = 12,
+        start_time: Optional[datetime] = None,
+        step_minutes: int = 5,
+    ) -> List[TelemetryMeasurement]:
+        """Generate deterministic post-maintenance recovery measurements returning to nominal healthy state."""
+        return self.generate_timeseries(
+            phase=ScenarioPhase.RECOVERED,
+            num_points=num_points,
+            start_time=start_time,
+            step_minutes=step_minutes,
+        )
+
+    def generate_failed_recovery_trajectory(
+        self,
+        num_points: int = 12,
+        start_time: Optional[datetime] = None,
+        step_minutes: int = 5,
+    ) -> List[TelemetryMeasurement]:
+        """Generate post-maintenance measurements where repair was improper, leaving vibration and temp abnormal."""
+        t0 = start_time or (datetime.now(timezone.utc) - timedelta(minutes=num_points * step_minutes))
+        measurements: List[TelemetryMeasurement] = []
+        for i in range(num_points):
+            pt_time = t0 + timedelta(minutes=i * step_minutes)
+            time_str = pt_time.strftime("%Y%m%d%H%M%S")
+            vib_noise = deterministic_noise(pt_time, "SEN-M204-VIB", amplitude=0.03)
+            temp_noise = deterministic_noise(pt_time, "SEN-M204-TMP", amplitude=0.6)
+            measurements.extend([
+                TelemetryMeasurement(
+                    measurement_id=f"MEAS-M204-VIB-{time_str}",
+                    machine_id=self.machine_id,
+                    sensor_id="SEN-M204-VIB",
+                    timestamp=pt_time,
+                    value=round(0.850 + vib_noise, 4),
+                    unit="g",
+                    quality="VALID",
+                ),
+                TelemetryMeasurement(
+                    measurement_id=f"MEAS-M204-TMP-{time_str}",
+                    machine_id=self.machine_id,
+                    sensor_id="SEN-M204-TMP",
+                    timestamp=pt_time,
+                    value=round(78.50 + temp_noise, 2),
+                    unit="°C",
+                    quality="VALID",
+                ),
+                TelemetryMeasurement(
+                    measurement_id=f"MEAS-M204-RPM-{time_str}",
+                    machine_id=self.machine_id,
+                    sensor_id="SEN-M204-RPM",
+                    timestamp=pt_time,
+                    value=1730.0,
+                    unit="RPM",
+                    quality="VALID",
+                ),
+                TelemetryMeasurement(
+                    measurement_id=f"MEAS-M204-CUR-{time_str}",
+                    machine_id=self.machine_id,
+                    sensor_id="SEN-M204-CUR",
+                    timestamp=pt_time,
+                    value=21.20,
+                    unit="A",
+                    quality="VALID",
+                ),
+            ])
+        return measurements
+
     def generate_operational_context(
         self,
         phase: Optional[ScenarioPhase] = None,

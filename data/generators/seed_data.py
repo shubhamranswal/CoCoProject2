@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
 from domain.enums import FailureMode, HealthStatus, MachineState, Priority, SensorType
@@ -219,11 +219,11 @@ M204_FAILURES: List[Failure] = [
         machine_id="M204",
         component_id="CMP-M204-BRG",
         failure_mode=FailureMode.BEARING_DEGRADATION,
-        occurred_at=datetime(2025, 4, 8, 14, 20),
+        occurred_at=datetime(2025, 4, 8, 14, 20, tzinfo=timezone.utc),
         root_cause="Bearing inner race micro-spalling causing thermal runaway and high vibration harmonic",
         downtime_hours=5.5,
         maintenance_action_taken="Emergency shutdown, replaced drive-end ball bearing assembly, re-greased with synthetic polyurea grease",
-        resolved_at=datetime(2025, 4, 8, 19, 50),
+        resolved_at=datetime(2025, 4, 8, 19, 50, tzinfo=timezone.utc),
     )
 ]
 
@@ -233,7 +233,7 @@ M204_MAINTENANCE_HISTORY: List[MaintenanceEvent] = [
         machine_id="M204",
         component_id="CMP-M204-BRG",
         maintenance_type="REPLACEMENT",
-        performed_at=datetime(2025, 4, 8, 18, 0),
+        performed_at=datetime(2025, 4, 8, 18, 0, tzinfo=timezone.utc),
         technician_name="Rajesh Kumar",
         duration_hours=3.5,
         parts_replaced=["BEARING-6210-2RS"],
@@ -244,7 +244,7 @@ M204_MAINTENANCE_HISTORY: List[MaintenanceEvent] = [
         machine_id="M204",
         component_id="CMP-M204-BRG",
         maintenance_type="INSPECTION",
-        performed_at=datetime(2026, 8, 12, 9, 30),
+        performed_at=datetime(2026, 8, 12, 9, 30, tzinfo=timezone.utc),
         technician_name="Amit Sharma",
         duration_hours=1.0,
         parts_replaced=[],
@@ -297,5 +297,20 @@ M204_MANUAL = Document(
             ),
             tags=["work_order", "procedure", "replacement", "checklist"],
         ),
+        KnowledgeChunk(
+            chunk_id="CHK-DRV5000-04",
+            document_id="DOC-DRV5000-MANUAL",
+            section_title="6.1 Differential Diagnosis: Bearing Degradation vs Misalignment vs Thermal Overload",
+            content=(
+                "When diagnosing abnormal drive motor telemetry: "
+                "1. Bearing Degradation exhibits high RMS vibration (>0.75g), elevated peak crest factor, "
+                "and localized bearing temperature rise (>75°C) while RPM remains steady. "
+                "2. Shaft Misalignment typically shows prominent 2X rotational speed vibration harmonics "
+                "without severe bearing thermal gradient runaway. "
+                "3. Thermal Overload shows uniform stator winding temperature rise across all phases with normal vibration RMS."
+            ),
+            tags=["diagnosis", "misalignment", "thermal_overload", "bearing_degradation", "hypotheses"],
+        ),
     ],
 )
+

@@ -6,13 +6,13 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 
-from domain.enums import ActionStatus, ApprovalStatus
+from domain.enums import ActionStatus, ApprovalStatus, VerificationStatus
 
 
 class Action(BaseModel):
     action_id: str
     recommendation_id: str
-    action_type: str  # CREATE_WORK_ORDER, ESCALATE, NOTIFY
+    action_type: str  # CREATE_WORK_ORDER, ESCALATE, NOTIFY, INSPECT_BEARING_ASSEMBLY
     payload: Dict[str, Any]
     status: ActionStatus = ActionStatus.PROPOSED
     requires_approval: bool = True
@@ -21,15 +21,21 @@ class Action(BaseModel):
 
 class Approval(BaseModel):
     approval_id: str
-    action_id: str
+    action_id: Optional[str] = None
     investigation_id: str
     machine_id: str
+    recommendation_id: Optional[str] = None
+    action_proposal_id: Optional[str] = None
+    requested_action: Optional[str] = None
     status: ApprovalStatus = ApprovalStatus.PENDING
     requested_by: str = "ReliabilityAgent"
-    reviewed_by: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
+    decision_by: Optional[str] = None
+    decision_at: Optional[datetime] = None
     decision_reason: Optional[str] = None
+    reviewed_by: Optional[str] = None  # Alias for decision_by
+    reviewed_at: Optional[datetime] = None  # Alias for decision_at
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: Optional[datetime] = None
 
 
 class Verification(BaseModel):
@@ -44,9 +50,19 @@ class Verification(BaseModel):
     post_temperature_c: float
     pre_risk_score: float
     post_risk_score: float
-    is_recovered: bool
+    risk_delta: float = 0.0
+    pre_oee: float = 0.0
+    post_oee: float = 0.0
+    oee_delta: float = 0.0
+    anomalies_before: int = 0
+    anomalies_after: int = 0
+    is_recovered: bool = True
+    verification_status: VerificationStatus = VerificationStatus.VERIFIED
+    verification_reason: str = ""
+    evidence_ids: list[str] = Field(default_factory=list)
     oee_recovery_pct: float = 0.0
     notes: str = ""
+
 
 
 class AuditEvent(BaseModel):

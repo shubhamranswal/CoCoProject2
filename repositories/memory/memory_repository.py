@@ -10,6 +10,7 @@ Pre-seeded with Plant 01, Line A/B/C, 10 machines, and primary machine M204.
 from __future__ import annotations
 
 from typing import Dict, List, Optional
+from datetime import datetime, timezone
 import threading
 
 from domain.enums import AlertStatus, ApprovalStatus, HealthStatus, MachineState, WorkOrderStatus
@@ -56,6 +57,14 @@ from data.generators.seed_data import (
     M204_MAINTENANCE_HISTORY,
     M204_MANUAL,
 )
+
+
+def _safe_dt(dt: Optional[datetime]) -> datetime:
+    if dt is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 class InMemoryRepository(
@@ -211,7 +220,7 @@ class InMemoryRepository(
     def get_maintenance_history(self, machine_id: str, limit: int = 20) -> List[MaintenanceEvent]:
         with self._lock:
             items = self._maintenance_events.get(machine_id, [])
-            return sorted(items, key=lambda m: m.performed_at, reverse=True)[:limit]
+            return sorted(items, key=lambda m: _safe_dt(m.performed_at), reverse=True)[:limit]
 
     def save_maintenance_event(self, event: MaintenanceEvent) -> None:
         with self._lock:
@@ -249,6 +258,13 @@ class InMemoryRepository(
             updated = wo.model_copy(update={"status": status})
             self._work_orders[work_order_id] = updated
             return updated
+
+    def update_work_order(self, work_order: WorkOrder) -> WorkOrder:
+        with self._lock:
+            if work_order.work_order_id not in self._work_orders:
+                raise ValueError(f"WorkOrder {work_order.work_order_id} not found")
+            self._work_orders[work_order.work_order_id] = work_order
+            return work_order
 
     # ReliabilityRepository implementations
     def get_failure_history(self, machine_id: str) -> List[Failure]:

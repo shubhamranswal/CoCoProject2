@@ -12,12 +12,16 @@ from domain.enums import FailureMode, Priority, WorkOrderStatus
 class MaintenanceEvent(BaseModel):
     maintenance_id: str
     machine_id: str
+    work_order_id: Optional[str] = None
     component_id: Optional[str] = None
+    failure_mode: Optional[FailureMode] = None
     maintenance_type: str  # INSPECTION, REPLACEMENT, LUBRICATION, REPAIR
     performed_at: datetime
     technician_name: str
     duration_hours: float
     parts_replaced: List[str] = Field(default_factory=list)
+    findings: Optional[str] = None
+    actions_performed: List[str] = Field(default_factory=list)
     notes: str = ""
 
 
@@ -27,14 +31,17 @@ class WorkOrder(BaseModel):
     component_id: Optional[str] = None
     investigation_id: Optional[str] = None
     recommendation_id: Optional[str] = None
+    source_approval_id: Optional[str] = None
     title: str
     description: str
     failure_mode: FailureMode
     priority: Priority
     status: WorkOrderStatus = WorkOrderStatus.DRAFT
     assigned_to: Optional[str] = None
+    created_by: str = "System"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     scheduled_date: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     checklist: List[str] = Field(default_factory=list)
     idempotency_key: Optional[str] = None
+

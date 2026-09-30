@@ -30,12 +30,12 @@ class FeatureVector(BaseModel):
     vibration_rate_of_change: float = 0.0  # g/hour
     vibration_baseline_deviation_pct: float = 0.0
     temperature_mean: float
-    temperature_slope: float  # °C per hour
+    temperature_slope: float = 0.0  # °C per hour
     temperature_baseline_deviation_pct: float = 0.0
-    rpm_mean: float
-    rpm_variance: float
+    rpm_mean: float = 1750.0
+    rpm_variance: float = 0.0
     rpm_deviation_pct: float = 0.0
-    current_mean: float
+    current_mean: float = 18.5
     vibration_temperature_correlation: float = 0.0
 
 
