@@ -39,7 +39,7 @@ class ReliabilityThresholds:
         default_factory=lambda: float(os.getenv("ANOMALY_ZSCORE_THRESHOLD", "2.5"))
     )
     failure_risk_alert_threshold: float = field(
-        default_factory=lambda: float(os.getenv("FAILURE_RISK_ALERT_THRESHOLD", "0.75"))
+        default_factory=lambda: float(os.getenv("FAILURE_RISK_ALERT_THRESHOLD", "0.65"))
     )
     bearing_vibration_rms_limit_g: float = field(
         default_factory=lambda: float(os.getenv("BEARING_VIBRATION_RMS_LIMIT_G", "0.75"))

@@ -19,8 +19,10 @@ class Alert(BaseModel):
     risk_score: float
     failure_mode: FailureMode = FailureMode.BEARING_DEGRADATION
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: Optional[datetime] = None
     acknowledged_at: Optional[datetime] = None
     resolved_at: Optional[datetime] = None
+    dedup_key: Optional[str] = None
 
 
 class Evidence(BaseModel):

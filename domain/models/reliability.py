@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 
-from domain.enums import FailureMode, HealthStatus, Severity
+from domain.enums import FailureMode, HealthStatus, RiskLevel, Severity
 
 
 class Failure(BaseModel):
@@ -26,10 +26,13 @@ class FailureRisk(BaseModel):
     machine_id: str
     failure_mode: FailureMode
     risk_score: float = Field(..., ge=0.0, le=1.0)
+    risk_level: RiskLevel = RiskLevel.LOW
+
     prediction_horizon_hours: int = 72
-    model_version: str = "v1.2.0-bearing-xgb"
+    model_version: str = "v1.2.0-deterministic-weighted"
     prediction_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     confidence: float = Field(default=0.85, ge=0.0, le=1.0)
+    contributing_factors: Dict[str, float] = Field(default_factory=dict)
     contributing_signals: List[str] = Field(default_factory=list)
 
 

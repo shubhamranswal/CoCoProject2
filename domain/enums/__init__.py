@@ -35,6 +35,14 @@ class Priority(str, Enum):
     CRITICAL = "CRITICAL"
 
 
+class RiskLevel(str, Enum):
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+
+
 class AlertStatus(str, Enum):
     OPEN = "OPEN"
     INVESTIGATING = "INVESTIGATING"
