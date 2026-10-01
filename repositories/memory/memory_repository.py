@@ -36,6 +36,8 @@ from domain.models import (
     TelemetryMeasurement,
     Verification,
     WorkOrder,
+    MLFailurePrediction,
+    PredictionOutcome,
 )
 from repositories.base import (
     GovernanceRepository,
@@ -95,9 +97,11 @@ class InMemoryRepository(
         self._investigations: Dict[str, Investigation] = {}
         self._work_orders: Dict[str, WorkOrder] = {}
         self._approvals: Dict[str, Approval] = {}
-        self._verifications: Dict[str, Verification] = {}  # work_order_id -> verification
         self._audit_events: List[AuditEvent] = []
         self._documents: Dict[str, Document] = {}  # machine_model -> Document
+        self._verifications: Dict[str, Verification] = {}  # work_order_id -> Verification
+        self._predictions: Dict[str, List[MLFailurePrediction]] = {}  # machine_id -> list
+        self._prediction_outcomes: Dict[str, PredictionOutcome] = {}  # prediction_id -> outcome
 
         if seed:
             self._seed_reference_data()
@@ -209,12 +213,51 @@ class InMemoryRepository(
         with self._lock:
             self._anomalies.setdefault(anomaly.machine_id, []).append(anomaly)
 
+    def reset_state(self) -> None:
+        """Reset repository to initial clean healthy baseline state."""
+        with self._lock:
+            self._plants.clear()
+            self._lines.clear()
+            self._machines.clear()
+            self._components.clear()
+            self._sensors.clear()
+            self._baselines.clear()
+            self._measurements.clear()
+            self._features.clear()
+            self._anomalies.clear()
+            self._failures.clear()
+            self._maintenance_events.clear()
+            self._failure_risks.clear()
+            self._health_assessments.clear()
+            self._alerts.clear()
+            self._investigations.clear()
+            self._work_orders.clear()
+            self._approvals.clear()
+            self._verifications.clear()
+            self._audit_events.clear()
+            self._documents.clear()
+            self._predictions.clear()
+            self._prediction_outcomes.clear()
+            self._seed_reference_data()
+
     def get_anomalies(self, machine_id: str, active_only: bool = True) -> List[Anomaly]:
         with self._lock:
             items = self._anomalies.get(machine_id, [])
             if active_only:
                 items = [a for a in items if a.status == "ACTIVE"]
             return sorted(items, key=lambda a: a.detected_at, reverse=True)
+
+    def list_anomalies(self, machine_id: Optional[str] = None, active_only: bool = True) -> List[Anomaly]:
+        with self._lock:
+            all_anomalies: List[Anomaly] = []
+            if machine_id:
+                all_anomalies = list(self._anomalies.get(machine_id, []))
+            else:
+                for lst in self._anomalies.values():
+                    all_anomalies.extend(lst)
+            if active_only:
+                all_anomalies = [a for a in all_anomalies if a.status == "ACTIVE"]
+            return sorted(all_anomalies, key=lambda a: a.detected_at, reverse=True)
 
     # MaintenanceRepository implementations
     def get_maintenance_history(self, machine_id: str, limit: int = 20) -> List[MaintenanceEvent]:
@@ -291,6 +334,44 @@ class InMemoryRepository(
         with self._lock:
             return self._health_assessments.get(machine_id)
 
+    def save_prediction(self, prediction: MLFailurePrediction) -> None:
+        with self._lock:
+            self._predictions.setdefault(prediction.machine_id, []).append(prediction)
+
+    def get_latest_prediction(self, machine_id: str) -> Optional[MLFailurePrediction]:
+        with self._lock:
+            items = self._predictions.get(machine_id, [])
+            if not items:
+                return None
+            return sorted(items, key=lambda p: p.prediction_timestamp, reverse=True)[0]
+
+    def list_predictions(
+        self, machine_id: Optional[str] = None, limit: int = 50
+    ) -> List[MLFailurePrediction]:
+        with self._lock:
+            if machine_id:
+                items = list(self._predictions.get(machine_id, []))
+            else:
+                items = [p for sub in self._predictions.values() for p in sub]
+            return sorted(items, key=lambda p: p.prediction_timestamp, reverse=True)[:limit]
+
+    def save_prediction_outcome(self, outcome: PredictionOutcome) -> None:
+        with self._lock:
+            self._prediction_outcomes[outcome.prediction_id] = outcome
+
+    def get_prediction_outcome(self, prediction_id: str) -> Optional[PredictionOutcome]:
+        with self._lock:
+            return self._prediction_outcomes.get(prediction_id)
+
+    def list_prediction_outcomes(
+        self, machine_id: Optional[str] = None
+    ) -> List[PredictionOutcome]:
+        with self._lock:
+            res = list(self._prediction_outcomes.values())
+            if machine_id:
+                res = [o for o in res if o.machine_id == machine_id]
+            return sorted(res, key=lambda o: o.evaluated_at, reverse=True)
+
     # InvestigationRepository implementations
     def create_alert(self, alert: Alert) -> Alert:
         with self._lock:
@@ -321,6 +402,11 @@ class InMemoryRepository(
         with self._lock:
             return self._investigations.get(investigation_id)
 
+    def get_evidence(self, investigation_id: str) -> List[Evidence]:
+        with self._lock:
+            inv = self._investigations.get(investigation_id)
+            return list(inv.evidence) if inv else []
+
     def save_evidence(self, evidence: List[Evidence]) -> None:
         with self._lock:
             for ev in evidence:
@@ -332,6 +418,20 @@ class InMemoryRepository(
         with self._lock:
             self._investigations[investigation.investigation_id] = investigation
             return investigation
+
+    def list_investigations(self, machine_id: Optional[str] = None) -> List[Investigation]:
+        with self._lock:
+            res = list(self._investigations.values())
+            if machine_id:
+                res = [inv for inv in res if inv.machine_id == machine_id]
+            return sorted(res, key=lambda inv: inv.created_at, reverse=True)
+
+    def get_investigation_by_alert(self, alert_id: str) -> Optional[Investigation]:
+        with self._lock:
+            for inv in self._investigations.values():
+                if inv.alert_id == alert_id:
+                    return inv
+            return None
 
     # GovernanceRepository implementations
     def create_approval(self, approval: Approval) -> Approval:
@@ -379,9 +479,27 @@ class InMemoryRepository(
         with self._lock:
             return self._verifications.get(work_order_id)
 
+    def get_verification_by_investigation(self, investigation_id: str) -> Optional[Verification]:
+        with self._lock:
+            for v in self._verifications.values():
+                if v.investigation_id == investigation_id:
+                    return v
+            return None
+
+    def list_verifications(self, machine_id: Optional[str] = None) -> List[Verification]:
+        with self._lock:
+            res = list(self._verifications.values())
+            if machine_id:
+                res = [v for v in res if v.machine_id == machine_id]
+            return sorted(res, key=lambda v: _safe_dt(v.verified_at), reverse=True)
+
     def log_audit(self, event: AuditEvent) -> None:
         with self._lock:
             self._audit_events.append(event)
+
+    def list_audit_events(self, limit: int = 50) -> List[AuditEvent]:
+        with self._lock:
+            return sorted(self._audit_events, key=lambda a: a.timestamp, reverse=True)[:limit]
 
     # KnowledgeRepository implementations
     def get_manual(self, machine_model: str) -> Optional[Document]:
@@ -397,3 +515,7 @@ class InMemoryRepository(
                     if q_lower in chunk.content.lower() or any(q_lower in tag.lower() for tag in chunk.tags):
                         results.append(f"[{doc.title} - {chunk.section_title}]: {chunk.content}")
             return results
+
+    def list_documents(self) -> List[Document]:
+        with self._lock:
+            return list(self._documents.values())

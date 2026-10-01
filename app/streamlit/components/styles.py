@@ -153,6 +153,123 @@ def apply_industrial_theme() -> None:
             padding: 10px 14px;
             margin-bottom: 8px;
         }
+
+        /* Hero Action Toolbar */
+        .hero-action-toolbar {
+            background-color: #12151e;
+            border: 1px solid #dc2626;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            border-left: 5px solid #dc2626;
+            border-radius: 0 0 6px 6px;
+            padding: 10px 16px;
+            margin-top: -16px;
+            margin-bottom: 16px;
+        }
+
+        /* Streamlit Button Overrides — Dark Industrial Aesthetic */
+        .stButton > button,
+        button[kind="secondary"],
+        button[data-testid="baseButton-secondary"] {
+            background-color: #171b26 !important;
+            color: #cbd5e1 !important;
+            border: 1px solid #2d3548 !important;
+            border-radius: 5px !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            box-shadow: none !important;
+            transition: all 0.15s ease-in-out !important;
+        }
+
+        .stButton > button:hover,
+        button[kind="secondary"]:hover,
+        button[data-testid="baseButton-secondary"]:hover {
+            background-color: #222838 !important;
+            border-color: #3b82f6 !important;
+            color: #ffffff !important;
+        }
+
+        .stButton > button:active,
+        button[kind="secondary"]:active,
+        button[data-testid="baseButton-secondary"]:active {
+            background-color: #1a202c !important;
+            border-color: #2563eb !important;
+        }
+
+        /* Primary Action Buttons */
+        .stButton > button[kind="primary"],
+        button[kind="primary"],
+        button[data-testid="baseButton-primary"] {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+            border: 1px solid #ef4444 !important;
+            color: #ffffff !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3) !important;
+        }
+
+        .stButton > button[kind="primary"]:hover,
+        button[kind="primary"]:hover,
+        button[data-testid="baseButton-primary"]:hover {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+            border-color: #f87171 !important;
+            color: #ffffff !important;
+        }
+
+        /* Disabled Buttons */
+        .stButton > button:disabled,
+        button[disabled],
+        button:disabled {
+            background-color: #0f1219 !important;
+            color: #475569 !important;
+            border: 1px solid #1e2433 !important;
+            cursor: not-allowed !important;
+            opacity: 0.6 !important;
+            box-shadow: none !important;
+        }
+
+        /* Sidebar Navigation Buttons */
+        section[data-testid="stSidebar"] .stButton > button {
+            background-color: #151822 !important;
+            color: #94a3b8 !important;
+            border: 1px solid #1e2433 !important;
+            border-radius: 5px !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            font-size: 13px !important;
+            font-weight: 600 !important;
+            padding: 8px 12px !important;
+            margin-bottom: 2px !important;
+            box-shadow: none !important;
+        }
+
+        section[data-testid="stSidebar"] .stButton > button:hover {
+            background-color: #1e2436 !important;
+            border-color: #38bdf8 !important;
+            color: #f8fafc !important;
+        }
+
+        section[data-testid="stSidebar"] .stButton > button[kind="primary"],
+        section[data-testid="stSidebar"] .stButton > button[data-testid="baseButton-primary"] {
+            background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%) !important;
+            border: 1px solid #f87171 !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35) !important;
+        }
+
+        /* Inputs & Global Search */
+        div[data-testid="stTextInput"] input {
+            background-color: #141722 !important;
+            border: 1px solid #232938 !important;
+            color: #f8fafc !important;
+            border-radius: 4px !important;
+            font-size: 12px !important;
+        }
+
+        div[data-testid="stTextInput"] input:focus {
+            border-color: #38bdf8 !important;
+            box-shadow: 0 0 0 1px #38bdf8 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,

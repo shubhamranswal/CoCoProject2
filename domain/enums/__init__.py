@@ -133,6 +133,8 @@ class SensorType(str, Enum):
 
 class TriggerType(str, Enum):
     ALERT = "ALERT"
+    CRITICAL_ALERT = "CRITICAL_ALERT"
+    PREDICTIVE_FAILURE = "PREDICTIVE_FAILURE"
     EVENT = "EVENT"
     SCHEDULE = "SCHEDULE"
     USER = "USER"

@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, ValidationError
 
 from domain.enums import ApprovalStatus
+from domain.exceptions import ApprovalExpiredError, ApprovalRequiredError, InvalidMachineError
 from domain.models import AuditEvent, ToolCall
 from repositories.base import GovernanceRepository
 from services.approval_service import ApprovalService
@@ -68,31 +69,34 @@ class BaseActionTool(ABC):
         if self.requires_approval:
             approval_id = kwargs.get("approval_id")
             if not approval_id:
-                raise ValueError(f"Action '{self.name}' requires a valid 'approval_id'.")
+                raise ApprovalRequiredError(f"Action '{self.name}' requires a valid 'approval_id'.")
 
             approval = self.approval_service.get_approval(approval_id)
             if not approval:
-                raise ValueError(f"Approval record '{approval_id}' not found in repository.")
+                raise ApprovalRequiredError(f"Approval record '{approval_id}' not found in repository.", entity_id=approval_id)
 
             if approval.status != ApprovalStatus.APPROVED:
-                raise PermissionError(
+                raise ApprovalRequiredError(
                     f"Action '{self.name}' rejected: Approval '{approval_id}' has status "
-                    f"'{approval.status.value}', but must be 'APPROVED'."
+                    f"'{approval.status.value}', but must be 'APPROVED'.",
+                    entity_id=approval_id,
                 )
 
             # Check expiration
             now = datetime.now(timezone.utc)
             if approval.expires_at and now > approval.expires_at:
-                raise ValueError(
-                    f"Action '{self.name}' rejected: Approval '{approval_id}' expired at {approval.expires_at}."
+                raise ApprovalExpiredError(
+                    f"Action '{self.name}' rejected: Approval '{approval_id}' expired at {approval.expires_at}.",
+                    entity_id=approval_id,
                 )
 
             # Check machine match if supplied
             target_machine = kwargs.get("machine_id")
             if target_machine and approval.machine_id != target_machine:
-                raise ValueError(
+                raise InvalidMachineError(
                     f"Action '{self.name}' rejected: Target machine '{target_machine}' does not match "
-                    f"approved machine '{approval.machine_id}'."
+                    f"approved machine '{approval.machine_id}'.",
+                    entity_id=target_machine,
                 )
 
         # 3. Input Validation

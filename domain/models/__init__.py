@@ -3,12 +3,14 @@
 from domain.models.asset import Plant, ProductionLine, Machine, Component, Sensor
 from domain.models.telemetry import TelemetryMeasurement, FeatureVector, Baseline, Anomaly
 from domain.models.production import ProductionRun, DowntimeEvent
-from domain.models.reliability import Failure, FailureRisk, HealthAssessment
+from domain.models.reliability import Failure, FailureRisk, HealthAssessment, MLFailurePrediction, PredictionOutcome
 from domain.models.maintenance import MaintenanceEvent, WorkOrder
 from domain.models.intelligence import Alert, Evidence, Hypothesis, Finding, Recommendation, Investigation, ActionProposal
 from domain.models.governance import Action, Approval, Verification, AuditEvent
 from domain.models.agent import AgentExecution, ToolCall
 from domain.models.knowledge import Document, KnowledgeChunk
+from domain.models.freshness import DataFreshness
+from domain.models.lineage import DecisionLineage
 
 __all__ = [
     "Plant",
@@ -25,6 +27,8 @@ __all__ = [
     "Failure",
     "FailureRisk",
     "HealthAssessment",
+    "MLFailurePrediction",
+    "PredictionOutcome",
     "MaintenanceEvent",
     "WorkOrder",
     "Alert",
@@ -35,7 +39,6 @@ __all__ = [
     "Investigation",
     "ActionProposal",
     "Action",
-
     "Approval",
     "Verification",
     "AuditEvent",
@@ -43,4 +46,6 @@ __all__ = [
     "ToolCall",
     "Document",
     "KnowledgeChunk",
+    "DataFreshness",
+    "DecisionLineage",
 ]

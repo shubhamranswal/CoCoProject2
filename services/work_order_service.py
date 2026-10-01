@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from domain.enums import FailureMode, Priority, WorkOrderStatus
+from domain.exceptions import InvalidWorkOrderTransitionError
 from domain.models import AuditEvent, MaintenanceEvent, WorkOrder
 from repositories.base import GovernanceRepository, MaintenanceRepository
 
@@ -48,6 +49,15 @@ class WorkOrderService:
             existing_orders = self.repo.list_work_orders(machine_id=work_order.machine_id)
             for existing in existing_orders:
                 if existing.idempotency_key == work_order.idempotency_key:
+                    self._log_audit(
+                        actor=work_order.created_by or "SYSTEM",
+                        action_type="WORK_ORDER_IDEMPOTENT_REPLAY",
+                        resource_id=existing.work_order_id,
+                        details={
+                            "idempotency_key": work_order.idempotency_key,
+                            "existing_status": existing.status.value,
+                        },
+                    )
                     return existing
 
         created = self.repo.create_work_order(work_order)
@@ -93,9 +103,10 @@ class WorkOrderService:
 
         allowed = VALID_STATUS_TRANSITIONS.get(wo.status, set())
         if new_status not in allowed:
-            raise ValueError(
+            raise InvalidWorkOrderTransitionError(
                 f"Invalid work order status transition from {wo.status.value} to {new_status.value}. "
-                f"Allowed transitions from {wo.status.value}: {[s.value for s in allowed]}"
+                f"Allowed transitions from {wo.status.value}: {[s.value for s in allowed]}",
+                entity_id=work_order_id,
             )
 
         updated = self.repo.update_work_order_status(work_order_id, new_status)

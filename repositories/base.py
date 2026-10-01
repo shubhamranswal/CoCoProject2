@@ -33,6 +33,8 @@ from domain.models import (
     Verification,
     WorkOrder,
     Document,
+    MLFailurePrediction,
+    PredictionOutcome,
 )
 
 
@@ -85,6 +87,9 @@ class TelemetryRepository(ABC):
     @abstractmethod
     def get_anomalies(self, machine_id: str, active_only: bool = True) -> List[Anomaly]: ...
 
+    @abstractmethod
+    def list_anomalies(self, machine_id: Optional[str] = None, active_only: bool = True) -> List[Anomaly]: ...
+
 
 class MaintenanceRepository(ABC):
     @abstractmethod
@@ -127,6 +132,28 @@ class ReliabilityRepository(ABC):
     @abstractmethod
     def get_latest_health_assessment(self, machine_id: str) -> Optional[HealthAssessment]: ...
 
+    @abstractmethod
+    def save_prediction(self, prediction: MLFailurePrediction) -> None: ...
+
+    @abstractmethod
+    def get_latest_prediction(self, machine_id: str) -> Optional[MLFailurePrediction]: ...
+
+    @abstractmethod
+    def list_predictions(
+        self, machine_id: Optional[str] = None, limit: int = 50
+    ) -> List[MLFailurePrediction]: ...
+
+    @abstractmethod
+    def save_prediction_outcome(self, outcome: PredictionOutcome) -> None: ...
+
+    @abstractmethod
+    def get_prediction_outcome(self, prediction_id: str) -> Optional[PredictionOutcome]: ...
+
+    @abstractmethod
+    def list_prediction_outcomes(
+        self, machine_id: Optional[str] = None
+    ) -> List[PredictionOutcome]: ...
+
 
 class InvestigationRepository(ABC):
     @abstractmethod
@@ -150,7 +177,16 @@ class InvestigationRepository(ABC):
     def save_evidence(self, evidence: List[Evidence]) -> None: ...
 
     @abstractmethod
+    def get_evidence(self, investigation_id: str) -> List[Evidence]: ...
+
+    @abstractmethod
     def update_investigation(self, investigation: Investigation) -> Investigation: ...
+
+    @abstractmethod
+    def list_investigations(self, machine_id: Optional[str] = None) -> List[Investigation]: ...
+
+    @abstractmethod
+    def get_investigation_by_alert(self, alert_id: str) -> Optional[Investigation]: ...
 
 
 class GovernanceRepository(ABC):
@@ -177,7 +213,16 @@ class GovernanceRepository(ABC):
     def get_verification(self, work_order_id: str) -> Optional[Verification]: ...
 
     @abstractmethod
+    def get_verification_by_investigation(self, investigation_id: str) -> Optional[Verification]: ...
+
+    @abstractmethod
+    def list_verifications(self, machine_id: Optional[str] = None) -> List[Verification]: ...
+
+    @abstractmethod
     def log_audit(self, event: AuditEvent) -> None: ...
+
+    @abstractmethod
+    def list_audit_events(self, limit: int = 50) -> List[AuditEvent]: ...
 
 
 class KnowledgeRepository(ABC):
@@ -186,3 +231,6 @@ class KnowledgeRepository(ABC):
 
     @abstractmethod
     def search_docs(self, query: str) -> List[str]: ...
+
+    @abstractmethod
+    def list_documents(self) -> List[Document]: ...

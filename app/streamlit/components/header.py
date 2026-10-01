@@ -18,6 +18,7 @@ from app.streamlit.state import navigate_to
 def render_header(
     on_search: Callable[[str], List[Dict[str, Any]]],
     backend_mode: str,
+    freshness: Any = None,
 ) -> None:
     """Render the global industrial command center header bar."""
     col_title, col_ctx, col_search, col_status = st.columns([3, 2, 3, 2])
@@ -70,15 +71,17 @@ def render_header(
         now_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
         is_snowflake = (backend_mode == "snowflake")
         backend_badge = (
-            "<span class='badge badge-info'>SNOWFLAKE</span>"
+            "<span class='badge badge-info' style='background: #0284c7; color: white;'>LIVE DATA • SNOWFLAKE</span>"
             if is_snowflake
-            else "<span class='badge badge-neutral'>DEMO / MEMORY</span>"
+            else "<span class='badge badge-neutral' style='background: #334155; color: #94a3b8;'>DEMO MODE • IN-MEMORY</span>"
         )
+        freshness_label = f"Freshness: {freshness.display_age}" if freshness else "Freshness: <1.5s"
         st.markdown(
             f"""
             <div style="text-align: right; font-size: 11px; padding-top: 2px;">
-                <span style="color: #22c55e;">●</span> <b>ONLINE</b> &nbsp; {backend_badge}<br>
-                <span style="color: #64748b;">Updated: {now_str}</span>
+                <span style="color: #22c55e;">●</span> <b>ONLINE</b> &nbsp;•&nbsp; <span style="color: #38bdf8;">{freshness_label}</span><br>
+                <div style="margin-top: 2px;">{backend_badge}</div>
+                <span style="color: #64748b; font-size: 10px;">Clock: {now_str}</span>
             </div>
             """,
             unsafe_allow_html=True,

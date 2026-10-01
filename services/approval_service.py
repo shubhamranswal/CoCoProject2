@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from domain.enums import ApprovalStatus
+from domain.exceptions import ApprovalExpiredError
 from domain.models import Approval, AuditEvent
 from repositories.base import GovernanceRepository
 
@@ -49,7 +50,7 @@ class ApprovalService:
                 reviewer=approver_id,
                 reason="Approval request expired before decision.",
             )
-            raise ValueError(f"Approval '{approval_id}' has expired.")
+            raise ApprovalExpiredError(f"Approval '{approval_id}' has expired.", entity_id=approval_id)
 
         # Check existing resolved states
         if app.status == ApprovalStatus.APPROVED:

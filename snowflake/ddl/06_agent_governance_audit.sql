@@ -25,7 +25,12 @@ CREATE TABLE IF NOT EXISTS FACTORY_AGENT.VERIFICATION (
     post_temperature_c FLOAT NOT NULL,
     pre_risk_score FLOAT NOT NULL,
     post_risk_score FLOAT NOT NULL,
+    risk_delta FLOAT,
+    oee_delta FLOAT,
+    anomalies_before INT DEFAULT 0,
+    anomalies_after INT DEFAULT 0,
     is_recovered BOOLEAN NOT NULL,
+    verification_status VARCHAR(32) DEFAULT 'VERIFIED',
     oee_recovery_pct FLOAT DEFAULT 0.0,
     notes VARCHAR(1024)
 );

@@ -41,6 +41,7 @@ from app.streamlit.views import (
     render_work_orders_view,
 )
 from domain.enums import AlertStatus
+from domain.exceptions import RepositoryUnavailableError
 
 # 1. Page Configuration
 st.set_page_config(
@@ -56,11 +57,16 @@ apply_industrial_theme()
 # 3. Initialize Session State
 init_session_state()
 
-# 4. Storage Backend Selection
+# 4. Storage Backend Selection & Facade Instantiation
 if "backend_mode" not in st.session_state:
     st.session_state.backend_mode = "in_memory"
 
-facade = get_facade(backend_mode=st.session_state.backend_mode)
+backend_error = None
+facade = None
+try:
+    facade = get_facade(backend_mode=st.session_state.backend_mode)
+except RepositoryUnavailableError as exc:
+    backend_error = str(exc)
 
 
 # 5. Sidebar Callbacks
@@ -71,36 +77,32 @@ def handle_backend_change(new_mode: str) -> None:
 
 
 def handle_run_degradation() -> None:
-    facade.run_m204_degradation_pipeline()
-    st.session_state.scenario_stage = "DEGRADED"
+    if facade:
+        facade.run_m204_degradation_pipeline()
+        st.session_state.scenario_stage = "DEGRADED"
+        navigate_to("Command Center", machine_id="M204")
 
 
 def handle_run_investigation() -> None:
-    alerts = facade.repo.list_alerts(machine_id="M204", status=AlertStatus.OPEN)
-    if alerts:
-        res = facade.run_reliability_investigation(alerts[0].alert_id)
-        st.session_state.selected_investigation_id = res.investigation.investigation_id
-        st.session_state.scenario_stage = "INVESTIGATED"
-        navigate_to("AI Investigations", machine_id="M204", investigation_id=res.investigation.investigation_id)
+    if facade:
+        alerts = facade.repo.list_alerts(machine_id="M204", status=AlertStatus.OPEN)
+        if alerts:
+            res = facade.run_reliability_investigation(alerts[0].alert_id)
+            st.session_state.selected_investigation_id = res.investigation.investigation_id
+            st.session_state.scenario_stage = "INVESTIGATED"
+            navigate_to("AI Investigations", machine_id="M204", investigation_id=res.investigation.investigation_id)
 
 
 def handle_reset_demo() -> None:
-    facade.reset_demo()
-    st.session_state.scenario_stage = "INITIALIZED"
-    st.session_state.selected_investigation_id = None
-    st.session_state.selected_work_order_id = None
-    navigate_to("Command Center", machine_id="M204")
+    if facade:
+        facade.reset_demo(seed_degradation=False)
+        st.session_state.scenario_stage = "HEALTHY"
+        st.session_state.selected_investigation_id = None
+        st.session_state.selected_work_order_id = None
+        navigate_to("Command Center", machine_id="M204")
 
 
-# 6. Global Header
-render_header(
-    on_search=facade.search_entities,
-    backend_mode=st.session_state.backend_mode,
-)
-
-st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 8px 0 16px 0;'/>", unsafe_allow_html=True)
-
-# 7. Sidebar Navigation & Demo Controls
+# 6. Sidebar Navigation & Demo Controls
 render_sidebar(
     backend_mode=st.session_state.backend_mode,
     on_backend_change=handle_backend_change,
@@ -108,6 +110,56 @@ render_sidebar(
     on_run_investigation=handle_run_investigation,
     on_reset_demo=handle_reset_demo,
 )
+
+# 7. Error Banner if Backend Unavailable (Strict No Silent Fallback)
+if backend_error or facade is None:
+    st.markdown(
+        """
+        <div style="background: #1e1014; border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin-top: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 24px;">🚫</span>
+                <div>
+                    <div style="font-size: 16px; font-weight: 800; color: #fca5a5;">
+                        STORAGE BACKEND UNAVAILABLE: SNOWFLAKE CLOUD
+                    </div>
+                    <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                        The application is configured to run in <code>LIVE DATA • SNOWFLAKE</code> mode, but a connection to Snowflake could not be established.
+                    </div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.error(f"Connection Diagnostic: {backend_error}")
+    st.markdown(
+        """
+        **Operational Safety Guardrail**:
+        To prevent misleading operations, silent fallback to in-memory mock data is strictly disabled.
+        You can verify your Snowflake environment credentials in `.env`, or explicitly switch to deterministic in-memory demo mode below.
+        """
+    )
+    col_err1, col_err2 = st.columns(2)
+    with col_err1:
+        if st.button("🔄 Retry Snowflake Connection", type="primary", use_container_width=True):
+            st.cache_resource.clear()
+            st.rerun()
+    with col_err2:
+        if st.button("🔵 Switch to Demo Mode (In-Memory)", use_container_width=True):
+            st.session_state.backend_mode = "in_memory"
+            st.cache_resource.clear()
+            st.rerun()
+    st.stop()
+
+# 8. Global Header
+freshness = facade.get_data_freshness() if facade else None
+render_header(
+    on_search=facade.search_entities,
+    backend_mode=st.session_state.backend_mode,
+    freshness=freshness,
+)
+
+st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 8px 0 16px 0;'/>", unsafe_allow_html=True)
 
 # 8. View Router
 active_view = st.session_state.get("active_nav", "Command Center")

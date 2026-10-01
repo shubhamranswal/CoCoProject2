@@ -185,11 +185,11 @@ def render_oee_view(facade: CommandCenterFacade) -> None:
         else:
             asset_oee = facade.oee_service.calculate_oee(m.machine_id, now - timedelta(hours=8), now)
 
-        oee_pct = f"{asset_oee.oee * 100:.1f}%" if asset_oee else "89.4%"
-        avail_pct = f"{asset_oee.availability * 100:.1f}%" if asset_oee else "93.0%"
-        perf_pct = f"{asset_oee.performance * 100:.1f}%" if asset_oee else "97.1%"
-        qual_pct = f"{asset_oee.quality * 100:.1f}%" if asset_oee else "99.0%"
-        dt_min = f"{asset_oee.unplanned_downtime_minutes:.0f} min" if asset_oee else "0 min"
+        oee_pct = f"{asset_oee.oee * 100:.1f}%" if asset_oee else "--"
+        avail_pct = f"{asset_oee.availability * 100:.1f}%" if asset_oee else "--"
+        perf_pct = f"{asset_oee.performance * 100:.1f}%" if asset_oee else "--"
+        qual_pct = f"{asset_oee.quality * 100:.1f}%" if asset_oee else "--"
+        dt_min = f"{asset_oee.unplanned_downtime_minutes:.0f} min" if asset_oee else "--"
 
         status_badge = (
             "🔴 CRITICAL" if m.health_status == HealthStatus.CRITICAL

@@ -57,15 +57,15 @@ def render_asset_grid_table(
         else:
             h_badge = "<span class='badge badge-healthy'>HEALTHY</span>"
 
-        risk_val = f"{risk.risk_score * 100:.0f}%" if risk else "10%"
+        risk_val = f"{risk.risk_score * 100:.0f}%" if risk else "--"
         risk_color = "#ef4444" if (risk and risk.risk_score > 0.7) else ("#f59e0b" if (risk and risk.risk_score > 0.4) else "#10b981")
 
-        c1.markdown(f"**`{m.machine_id}`**")
-        c2.markdown(f"{m.name}")
-        c3.markdown(f"<code>{m.line_id}</code>", unsafe_allow_html=True)
-        c4.markdown(h_badge, unsafe_allow_html=True)
-        c5.markdown(f"<span style='color: {risk_color}; font-weight: 700;'>{risk_val}</span>", unsafe_allow_html=True)
-        c6.markdown(f"{alerts_cnt} active" if alerts_cnt > 0 else "<span style='color: #64748b;'>0</span>", unsafe_allow_html=True)
+        c1.markdown(f"<div style='padding-top: 7px;'><b><code>{m.machine_id}</code></b></div>", unsafe_allow_html=True)
+        c2.markdown(f"<div style='padding-top: 7px; font-weight: 500;'>{m.name}</div>", unsafe_allow_html=True)
+        c3.markdown(f"<div style='padding-top: 7px;'><code>{m.line_id}</code></div>", unsafe_allow_html=True)
+        c4.markdown(f"<div style='padding-top: 7px;'>{h_badge}</div>", unsafe_allow_html=True)
+        c5.markdown(f"<div style='padding-top: 7px; color: {risk_color}; font-weight: 700;'>{risk_val}</div>", unsafe_allow_html=True)
+        c6.markdown(f"<div style='padding-top: 7px;'>{alerts_cnt} active</div>" if alerts_cnt > 0 else "<div style='padding-top: 7px; color: #64748b;'>0</div>", unsafe_allow_html=True)
 
         with c7:
             if st.button("Inspect", key=f"inspect_{m.machine_id}", use_container_width=True):

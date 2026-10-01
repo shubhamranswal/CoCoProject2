@@ -28,7 +28,9 @@ from domain.models import (
     Investigation,
     Machine,
     MaintenanceEvent,
+    MLFailurePrediction,
     Plant,
+    PredictionOutcome,
     ProductionLine,
     Sensor,
     TelemetryMeasurement,
@@ -480,6 +482,44 @@ class SnowflakeRepository(
             cur.close()
             conn.close()
 
+    def list_anomalies(self, machine_id: Optional[str] = None, active_only: bool = True) -> List[Anomaly]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            sql = (
+                "SELECT anomaly_id, machine_id, sensor_id, detected_at, severity, score, "
+                "metric_name, observed_value, baseline_value, deviation_pct, status "
+                "FROM FACTORY_TELEMETRY.ANOMALY WHERE 1=1 "
+            )
+            params: list = []
+            if machine_id:
+                sql += "AND machine_id = %s "
+                params.append(machine_id)
+            if active_only:
+                sql += "AND status = 'ACTIVE' "
+            sql += "ORDER BY detected_at DESC"
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+            return [
+                Anomaly(
+                    anomaly_id=r[0],
+                    machine_id=r[1],
+                    sensor_id=r[2],
+                    detected_at=r[3],
+                    severity=Severity(r[4]),
+                    score=float(r[5]),
+                    metric_name=r[6],
+                    observed_value=float(r[7]),
+                    baseline_value=float(r[8]),
+                    deviation_pct=float(r[9]),
+                    status=r[10],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
     # MaintenanceRepository
     def get_maintenance_history(self, machine_id: str, limit: int = 20) -> List[MaintenanceEvent]:
         conn = self.conn_mgr.get_connection()
@@ -826,6 +866,224 @@ class SnowflakeRepository(
             cur.close()
             conn.close()
 
+    def save_prediction(self, prediction: MLFailurePrediction) -> None:
+        import json
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "INSERT INTO FACTORY_INTELLIGENCE.ML_PREDICTION "
+                "(prediction_id, machine_id, component_id, failure_mode, failure_probability, "
+                "prediction_horizon_hours, model_name, model_version, training_dataset_version, "
+                "feature_schema_version, confidence, threshold_exceeded, top_contributing_features, "
+                "feature_timestamp, prediction_timestamp) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    prediction.prediction_id,
+                    prediction.machine_id,
+                    prediction.component_id,
+                    prediction.failure_mode.value,
+                    prediction.failure_probability,
+                    prediction.prediction_horizon_hours,
+                    prediction.model_name,
+                    prediction.model_version,
+                    prediction.training_dataset_version,
+                    prediction.feature_schema_version,
+                    prediction.confidence,
+                    prediction.threshold_exceeded,
+                    json.dumps(prediction.top_contributing_features),
+                    prediction.feature_timestamp.isoformat(),
+                    prediction.prediction_timestamp.isoformat(),
+                ),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_latest_prediction(self, machine_id: str) -> Optional[MLFailurePrediction]:
+        import json
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT prediction_id, machine_id, component_id, failure_mode, failure_probability, "
+                "prediction_horizon_hours, model_name, model_version, training_dataset_version, "
+                "feature_schema_version, confidence, threshold_exceeded, top_contributing_features, "
+                "feature_timestamp, prediction_timestamp "
+                "FROM FACTORY_INTELLIGENCE.ML_PREDICTION WHERE machine_id = %s "
+                "ORDER BY prediction_timestamp DESC LIMIT 1",
+                (machine_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            top_feats = json.loads(r[12]) if (r[12] and isinstance(r[12], str)) else (r[12] or {})
+            return MLFailurePrediction(
+                prediction_id=r[0],
+                machine_id=r[1],
+                component_id=r[2],
+                failure_mode=FailureMode(r[3]),
+                failure_probability=float(r[4]),
+                prediction_horizon_hours=int(r[5]),
+                model_name=r[6],
+                model_version=r[7],
+                training_dataset_version=r[8],
+                feature_schema_version=r[9],
+                confidence=float(r[10]),
+                threshold_exceeded=bool(r[11]),
+                top_contributing_features=top_feats,
+                feature_timestamp=r[13],
+                prediction_timestamp=r[14],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_predictions(self, machine_id: Optional[str] = None, limit: int = 50) -> List[MLFailurePrediction]:
+        import json
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            sql = (
+                "SELECT prediction_id, machine_id, component_id, failure_mode, failure_probability, "
+                "prediction_horizon_hours, model_name, model_version, training_dataset_version, "
+                "feature_schema_version, confidence, threshold_exceeded, top_contributing_features, "
+                "feature_timestamp, prediction_timestamp "
+                "FROM FACTORY_INTELLIGENCE.ML_PREDICTION WHERE 1=1 "
+            )
+            params: list = []
+            if machine_id:
+                sql += "AND machine_id = %s "
+                params.append(machine_id)
+            sql += "ORDER BY prediction_timestamp DESC LIMIT %s"
+            params.append(limit)
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+            res: List[MLFailurePrediction] = []
+            for r in rows:
+                top_feats = json.loads(r[12]) if (r[12] and isinstance(r[12], str)) else (r[12] or {})
+                res.append(
+                    MLFailurePrediction(
+                        prediction_id=r[0],
+                        machine_id=r[1],
+                        component_id=r[2],
+                        failure_mode=FailureMode(r[3]),
+                        failure_probability=float(r[4]),
+                        prediction_horizon_hours=int(r[5]),
+                        model_name=r[6],
+                        model_version=r[7],
+                        training_dataset_version=r[8],
+                        feature_schema_version=r[9],
+                        confidence=float(r[10]),
+                        threshold_exceeded=bool(r[11]),
+                        top_contributing_features=top_feats,
+                        feature_timestamp=r[13],
+                        prediction_timestamp=r[14],
+                    )
+                )
+            return res
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_prediction_outcome(self, outcome: PredictionOutcome) -> None:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "INSERT INTO FACTORY_INTELLIGENCE.PREDICTION_OUTCOME "
+                "(outcome_id, prediction_id, machine_id, predicted_failure, actual_failure, "
+                "prediction_horizon_hours, lead_time_hours, verification_id, evaluated_at, "
+                "is_correct, notes) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    outcome.outcome_id,
+                    outcome.prediction_id,
+                    outcome.machine_id,
+                    outcome.predicted_failure,
+                    outcome.actual_failure,
+                    outcome.prediction_horizon_hours,
+                    outcome.lead_time_hours,
+                    outcome.verification_id,
+                    outcome.evaluated_at.isoformat(),
+                    outcome.is_correct,
+                    outcome.notes,
+                ),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_prediction_outcome(self, prediction_id: str) -> Optional[PredictionOutcome]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT outcome_id, prediction_id, machine_id, predicted_failure, actual_failure, "
+                "prediction_horizon_hours, lead_time_hours, verification_id, evaluated_at, "
+                "is_correct, notes "
+                "FROM FACTORY_INTELLIGENCE.PREDICTION_OUTCOME WHERE prediction_id = %s",
+                (prediction_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return PredictionOutcome(
+                outcome_id=r[0],
+                prediction_id=r[1],
+                machine_id=r[2],
+                predicted_failure=bool(r[3]),
+                actual_failure=bool(r[4]),
+                prediction_horizon_hours=int(r[5]),
+                lead_time_hours=float(r[6]) if r[6] is not None else None,
+                verification_id=r[7],
+                evaluated_at=r[8],
+                is_correct=bool(r[9]),
+                notes=r[10],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_prediction_outcomes(self, machine_id: Optional[str] = None) -> List[PredictionOutcome]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            sql = (
+                "SELECT outcome_id, prediction_id, machine_id, predicted_failure, actual_failure, "
+                "prediction_horizon_hours, lead_time_hours, verification_id, evaluated_at, "
+                "is_correct, notes "
+                "FROM FACTORY_INTELLIGENCE.PREDICTION_OUTCOME WHERE 1=1 "
+            )
+            params: list = []
+            if machine_id:
+                sql += "AND machine_id = %s "
+                params.append(machine_id)
+            sql += "ORDER BY evaluated_at DESC"
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+            return [
+                PredictionOutcome(
+                    outcome_id=r[0],
+                    prediction_id=r[1],
+                    machine_id=r[2],
+                    predicted_failure=bool(r[3]),
+                    actual_failure=bool(r[4]),
+                    prediction_horizon_hours=int(r[5]),
+                    lead_time_hours=float(r[6]) if r[6] is not None else None,
+                    verification_id=r[7],
+                    evaluated_at=r[8],
+                    is_correct=bool(r[9]),
+                    notes=r[10],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
     # InvestigationRepository
     def create_alert(self, alert: Alert) -> Alert:
         conn = self.conn_mgr.get_connection()
@@ -1004,6 +1262,35 @@ class SnowflakeRepository(
             cur.close()
             conn.close()
 
+    def get_evidence(self, investigation_id: str) -> List[Evidence]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT evidence_id, investigation_id, evidence_type, source, metric, observed_value, baseline_value, relationship, summary, timestamp "
+                "FROM FACTORY_INTELLIGENCE.EVIDENCE WHERE investigation_id = %s ORDER BY timestamp",
+                (investigation_id,),
+            )
+            rows = cur.fetchall()
+            return [
+                Evidence(
+                    evidence_id=r[0],
+                    investigation_id=r[1],
+                    evidence_type=r[2],
+                    source=r[3],
+                    metric=r[4],
+                    observed_value=r[5],
+                    baseline_value=r[6],
+                    relationship=r[7],
+                    summary=r[8],
+                    timestamp=r[9],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
     def update_investigation(self, investigation: Investigation) -> Investigation:
         conn = self.conn_mgr.get_connection()
         cur = conn.cursor()
@@ -1020,6 +1307,64 @@ class SnowflakeRepository(
             )
             conn.commit()
             return investigation
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_investigations(self, machine_id: Optional[str] = None) -> List[Investigation]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            sql = (
+                "SELECT investigation_id, alert_id, machine_id, status, failure_mode, confidence, created_at, completed_at "
+                "FROM FACTORY_INTELLIGENCE.INVESTIGATION WHERE 1=1 "
+            )
+            params: list = []
+            if machine_id:
+                sql += "AND machine_id = %s "
+                params.append(machine_id)
+            sql += "ORDER BY created_at DESC"
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+            return [
+                Investigation(
+                    investigation_id=r[0],
+                    alert_id=r[1],
+                    machine_id=r[2],
+                    status=r[3],
+                    failure_mode=FailureMode(r[4]),
+                    confidence=float(r[5]),
+                    created_at=r[6],
+                    completed_at=r[7],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_investigation_by_alert(self, alert_id: str) -> Optional[Investigation]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT investigation_id, alert_id, machine_id, status, failure_mode, confidence, created_at, completed_at "
+                "FROM FACTORY_INTELLIGENCE.INVESTIGATION WHERE alert_id = %s ORDER BY created_at DESC",
+                (alert_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return Investigation(
+                investigation_id=r[0],
+                alert_id=r[1],
+                machine_id=r[2],
+                status=r[3],
+                failure_mode=FailureMode(r[4]),
+                confidence=float(r[5]),
+                created_at=r[6],
+                completed_at=r[7],
+            )
         finally:
             cur.close()
             conn.close()
@@ -1145,8 +1490,9 @@ class SnowflakeRepository(
                 "INSERT INTO FACTORY_AGENT.VERIFICATION "
                 "(verification_id, investigation_id, work_order_id, machine_id, verified_at, "
                 "pre_vibration_rms, post_vibration_rms, pre_temperature_c, post_temperature_c, "
-                "pre_risk_score, post_risk_score, is_recovered, oee_recovery_pct, notes) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                "pre_risk_score, post_risk_score, risk_delta, oee_delta, anomalies_before, anomalies_after, "
+                "is_recovered, verification_status, oee_recovery_pct, notes) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     verification.verification_id,
                     verification.investigation_id,
@@ -1159,7 +1505,12 @@ class SnowflakeRepository(
                     verification.post_temperature_c,
                     verification.pre_risk_score,
                     verification.post_risk_score,
+                    verification.risk_delta,
+                    verification.oee_delta,
+                    verification.anomalies_before,
+                    verification.anomalies_after,
                     verification.is_recovered,
+                    verification.verification_status.value if hasattr(verification.verification_status, "value") else str(verification.verification_status),
                     verification.oee_recovery_pct,
                     verification.notes,
                 ),
@@ -1176,7 +1527,8 @@ class SnowflakeRepository(
             cur.execute(
                 "SELECT verification_id, investigation_id, work_order_id, machine_id, verified_at, "
                 "pre_vibration_rms, post_vibration_rms, pre_temperature_c, post_temperature_c, "
-                "pre_risk_score, post_risk_score, is_recovered, oee_recovery_pct, notes "
+                "pre_risk_score, post_risk_score, risk_delta, oee_delta, anomalies_before, anomalies_after, "
+                "is_recovered, verification_status, oee_recovery_pct, notes "
                 "FROM FACTORY_AGENT.VERIFICATION WHERE work_order_id = %s",
                 (work_order_id,),
             )
@@ -1195,10 +1547,101 @@ class SnowflakeRepository(
                 post_temperature_c=float(r[8]),
                 pre_risk_score=float(r[9]),
                 post_risk_score=float(r[10]),
-                is_recovered=bool(r[11]),
-                oee_recovery_pct=float(r[12]),
-                notes=r[13] or "",
+                risk_delta=float(r[11]) if r[11] is not None else 0.0,
+                oee_delta=float(r[12]) if r[12] is not None else 0.0,
+                anomalies_before=int(r[13]) if r[13] is not None else 0,
+                anomalies_after=int(r[14]) if r[14] is not None else 0,
+                is_recovered=bool(r[15]),
+                verification_status=VerificationStatus(r[16]) if r[16] else VerificationStatus.VERIFIED,
+                oee_recovery_pct=float(r[17]),
+                notes=r[18] or "",
             )
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_verification_by_investigation(self, investigation_id: str) -> Optional[Verification]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT verification_id, investigation_id, work_order_id, machine_id, verified_at, "
+                "pre_vibration_rms, post_vibration_rms, pre_temperature_c, post_temperature_c, "
+                "pre_risk_score, post_risk_score, risk_delta, oee_delta, anomalies_before, anomalies_after, "
+                "is_recovered, verification_status, oee_recovery_pct, notes "
+                "FROM FACTORY_AGENT.VERIFICATION WHERE investigation_id = %s ORDER BY verified_at DESC",
+                (investigation_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return Verification(
+                verification_id=r[0],
+                investigation_id=r[1],
+                work_order_id=r[2],
+                machine_id=r[3],
+                verified_at=r[4],
+                pre_vibration_rms=float(r[5]),
+                post_vibration_rms=float(r[6]),
+                pre_temperature_c=float(r[7]),
+                post_temperature_c=float(r[8]),
+                pre_risk_score=float(r[9]),
+                post_risk_score=float(r[10]),
+                risk_delta=float(r[11]) if r[11] is not None else 0.0,
+                oee_delta=float(r[12]) if r[12] is not None else 0.0,
+                anomalies_before=int(r[13]) if r[13] is not None else 0,
+                anomalies_after=int(r[14]) if r[14] is not None else 0,
+                is_recovered=bool(r[15]),
+                verification_status=VerificationStatus(r[16]) if r[16] else VerificationStatus.VERIFIED,
+                oee_recovery_pct=float(r[17]),
+                notes=r[18] or "",
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_verifications(self, machine_id: Optional[str] = None) -> List[Verification]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            sql = (
+                "SELECT verification_id, investigation_id, work_order_id, machine_id, verified_at, "
+                "pre_vibration_rms, post_vibration_rms, pre_temperature_c, post_temperature_c, "
+                "pre_risk_score, post_risk_score, risk_delta, oee_delta, anomalies_before, anomalies_after, "
+                "is_recovered, verification_status, oee_recovery_pct, notes "
+                "FROM FACTORY_AGENT.VERIFICATION WHERE 1=1 "
+            )
+            params: list = []
+            if machine_id:
+                sql += "AND machine_id = %s "
+                params.append(machine_id)
+            sql += "ORDER BY verified_at DESC"
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+            return [
+                Verification(
+                    verification_id=r[0],
+                    investigation_id=r[1],
+                    work_order_id=r[2],
+                    machine_id=r[3],
+                    verified_at=r[4],
+                    pre_vibration_rms=float(r[5]),
+                    post_vibration_rms=float(r[6]),
+                    pre_temperature_c=float(r[7]),
+                    post_temperature_c=float(r[8]),
+                    pre_risk_score=float(r[9]),
+                    post_risk_score=float(r[10]),
+                    risk_delta=float(r[11]) if r[11] is not None else 0.0,
+                    oee_delta=float(r[12]) if r[12] is not None else 0.0,
+                    anomalies_before=int(r[13]) if r[13] is not None else 0,
+                    anomalies_after=int(r[14]) if r[14] is not None else 0,
+                    is_recovered=bool(r[15]),
+                    verification_status=VerificationStatus(r[16]) if r[16] else VerificationStatus.VERIFIED,
+                    oee_recovery_pct=float(r[17]),
+                    notes=r[18] or "",
+                )
+                for r in rows
+            ]
         finally:
             cur.close()
             conn.close()
@@ -1229,6 +1672,37 @@ class SnowflakeRepository(
             cur.close()
             conn.close()
 
+    def list_audit_events(self, limit: int = 50) -> List[AuditEvent]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT audit_id, actor, action_type, resource_id, resource_type, timestamp, details, status "
+                "FROM FACTORY_AUDIT.AUDIT_EVENT ORDER BY timestamp DESC LIMIT %s",
+                (limit,),
+            )
+            rows = cur.fetchall()
+            import json
+            res: List[AuditEvent] = []
+            for r in rows:
+                dt_dict = r[6] if isinstance(r[6], dict) else (json.loads(r[6]) if r[6] else {})
+                res.append(
+                    AuditEvent(
+                        audit_id=r[0],
+                        actor=r[1],
+                        action_type=r[2],
+                        resource_id=r[3],
+                        resource_type=r[4],
+                        timestamp=r[5],
+                        details=dt_dict,
+                        status=r[7],
+                    )
+                )
+            return res
+        finally:
+            cur.close()
+            conn.close()
+
     # KnowledgeRepository
     def get_manual(self, machine_model: str) -> Optional[Document]:
         # Minimal retrieval for technical manual
@@ -1236,3 +1710,27 @@ class SnowflakeRepository(
 
     def search_docs(self, query: str) -> List[str]:
         return []
+
+    def list_documents(self) -> List[Document]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT document_id, title, doc_type, machine_model, version, created_at "
+                "FROM FACTORY_KNOWLEDGE.DOCUMENT ORDER BY document_id"
+            )
+            rows = cur.fetchall()
+            return [
+                Document(
+                    document_id=r[0],
+                    title=r[1],
+                    doc_type=r[2],
+                    machine_model=r[3],
+                    version=r[4],
+                    created_at=r[5],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()

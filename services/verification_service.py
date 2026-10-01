@@ -26,6 +26,7 @@ from domain.enums import (
     VerificationStatus,
     WorkOrderStatus,
 )
+from domain.exceptions import VerificationNotReadyError
 from domain.models import (
     Anomaly,
     AuditEvent,
@@ -97,6 +98,16 @@ class VerificationService:
         pol = policy or VerificationPolicy()
         now = datetime.now(timezone.utc)
         active_anoms = active_anomalies or []
+
+        # Enforce prerequisite: work order must be COMPLETED
+        if self.maintenance_repo:
+            wo = self.maintenance_repo.get_work_order(work_order_id)
+            if wo and wo.status not in (WorkOrderStatus.COMPLETED, WorkOrderStatus.VERIFIED):
+                raise VerificationNotReadyError(
+                    f"Cannot verify work order '{work_order_id}' in status '{wo.status.value}'. "
+                    f"Work order must be COMPLETED before physical verification.",
+                    entity_id=work_order_id,
+                )
 
         # 1. Calculate physical and operational deltas
         risk_delta = round(post_risk.risk_score - pre_risk.risk_score, 4)

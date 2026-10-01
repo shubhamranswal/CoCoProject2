@@ -123,14 +123,53 @@ def render_reliability_view(facade: CommandCenterFacade) -> None:
                     f"""
                     <div class="ind-card" style="margin-bottom: 8px;">
                         <span class="badge badge-critical">{a.severity.value}</span>
-                        <span style="font-size: 12px; font-weight: 700; color: #f8fafc; margin-left: 6px;">{a.machine_id} — {a.title}</span>
-                        <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">{a.description}</div>
+                        <span style="font-size: 12px; font-weight: 700; color: #f8fafc; margin-left: 6px;">{a.machine_id} — {a.alert_id}</span>
+                        <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">{a.trigger_reason}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
         else:
             st.info("No active alerts.")
+
+    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 16px 0;'/>", unsafe_allow_html=True)
+
+    # Predictive Risk Timeline (Deterministic vs ML)
+    st.markdown("<b>Predictive Risk Timeline (M204 Degradation Dynamics):</b>", unsafe_allow_html=True)
+    st.caption("Compares Rule-Based Deterministic Risk (yellow dashed) with Calibrated ML Failure Probability P(failure within 24h) (red solid).")
+
+    timeline_pts = facade.get_predictive_timeline("M204")
+    times = [p["time"] for p in timeline_pts]
+    det_risks = [p["deterministic_risk"] * 100 for p in timeline_pts]
+    ml_probs = [p["ml_probability"] * 100 for p in timeline_pts]
+
+    fig_timeline = go.Figure()
+    fig_timeline.add_trace(go.Scatter(
+        x=times, y=det_risks,
+        name="Deterministic Risk (Rule)",
+        line=dict(color="#f59e0b", width=2, dash="dash"),
+        mode="lines+markers"
+    ))
+    fig_timeline.add_trace(go.Scatter(
+        x=times, y=ml_probs,
+        name="ML Failure Probability (24h)",
+        line=dict(color="#ef4444", width=3),
+        mode="lines+markers"
+    ))
+    fig_timeline.add_hline(y=50, line_dash="dot", line_color="#f59e0b", annotation_text="ML Warning (50%)")
+    fig_timeline.add_hline(y=70, line_dash="dot", line_color="#ef4444", annotation_text="Critical Threshold (70%)")
+
+    fig_timeline.update_layout(
+        paper_bgcolor="#12151c",
+        plot_bgcolor="#161922",
+        font=dict(color="#cbd5e1", size=11),
+        yaxis=dict(title="Probability / Risk (%)", range=[0, 105], gridcolor="#232936"),
+        xaxis=dict(title="Timeline (HH:MM)", gridcolor="#232936"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=30, r=20, t=30, b=30),
+        height=320,
+    )
+    st.plotly_chart(fig_timeline, use_container_width=True)
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 16px 0;'/>", unsafe_allow_html=True)
 

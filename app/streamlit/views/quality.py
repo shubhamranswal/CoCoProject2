@@ -33,10 +33,8 @@ def render_quality_view(facade: CommandCenterFacade) -> None:
 
     # 1. Quality KPI Cards
     col1, col2, col3, col4 = st.columns(4)
-    all_anomalies = []
-    if hasattr(facade.repo, "_anomalies"):
-        all_anomalies = list(facade.repo._anomalies.values())
-    active_anomalies = [a for a in all_anomalies if getattr(a, "status", "ACTIVE") == "ACTIVE"]
+    all_anomalies = facade.repo.list_anomalies(active_only=False)
+    active_anomalies = [a for a in all_anomalies if a.status == "ACTIVE"]
 
     with col1:
         st.markdown(
