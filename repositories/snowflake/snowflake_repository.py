@@ -53,6 +53,10 @@ from domain.models import (
     InventoryRisk,
     ProductionContext,
     ReliabilityFeatures,
+    ModelRegistryRecord,
+    ModelEvaluationRecord,
+    PredictionFeatureSnapshot,
+    PredictionLineage,
 )
 from repositories.base import (
     GovernanceRepository,
@@ -65,6 +69,7 @@ from repositories.base import (
     TelemetryRepository,
     AnalyticsRepository,
     KnowledgeSearchRepository,
+    MLRepository,
 )
 from repositories.snowflake.connection import SnowflakeConnectionManager
 
@@ -80,6 +85,7 @@ class SnowflakeRepository(
     SupplyChainRepository,
     AnalyticsRepository,
     KnowledgeSearchRepository,
+    MLRepository,
 ):
     def __init__(self, connection_manager: Optional[SnowflakeConnectionManager] = None) -> None:
         self.conn_mgr = connection_manager or SnowflakeConnectionManager()
@@ -2899,4 +2905,482 @@ class SnowflakeRepository(
         finally:
             cur.close()
             conn.close()
+
+    # MLRepository implementations
+    def save_model_metadata(self, record: ModelRegistryRecord) -> None:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                MERGE INTO COCO_FACTORY.ML.MODEL_REGISTRY target
+                USING (SELECT %s AS model_id) src
+                ON target.model_id = src.model_id
+                WHEN MATCHED THEN UPDATE SET
+                    model_name = %s, model_version = %s, algorithm = %s, training_dataset_version = %s,
+                    feature_version = %s, target_definition = %s, horizon_hours = %s, horizon_days = %s,
+                    training_start_date = %s, training_end_date = %s, validation_start_date = %s, validation_end_date = %s,
+                    test_start_date = %s, test_end_date = %s, auc_roc = %s, pr_auc = %s,
+                    precision_at_threshold = %s, recall_at_threshold = %s, f1_score = %s,
+                    feature_count = %s, parameters_json = %s, artifact_location = %s,
+                    artifact_checksum = %s, status = %s, trained_at = %s
+                WHEN NOT MATCHED THEN INSERT (
+                    model_id, model_name, model_version, version, algorithm, training_dataset_version,
+                    feature_version, target_definition, horizon_hours, horizon_days,
+                    training_start_date, training_end_date, validation_start_date, validation_end_date,
+                    test_start_date, test_end_date, auc_roc, pr_auc,
+                    precision_at_threshold, recall_at_threshold, f1_score,
+                    feature_count, parameters_json, artifact_location, artifact_checksum, status, trained_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s
+                )
+                """,
+                (
+                    record.model_id,
+                    record.model_name, record.model_version, record.algorithm, record.training_dataset_version,
+                    record.feature_version, record.target_definition, record.horizon_hours, int(record.horizon_hours / 24),
+                    record.training_start_date, record.training_end_date, record.validation_start_date, record.validation_end_date,
+                    record.test_start_date, record.test_end_date, record.auc_roc, record.pr_auc,
+                    record.precision_at_threshold, record.recall_at_threshold, record.f1_score,
+                    record.feature_count, json.dumps(record.parameters), record.artifact_location,
+                    record.artifact_checksum, record.status, record.trained_at.isoformat(),
+                    # insert values
+                    record.model_id, record.model_name, record.model_version, record.model_version, record.algorithm, record.training_dataset_version,
+                    record.feature_version, record.target_definition, record.horizon_hours, int(record.horizon_hours / 24),
+                    record.training_start_date, record.training_end_date, record.validation_start_date, record.validation_end_date,
+                    record.test_start_date, record.test_end_date, record.auc_roc, record.pr_auc,
+                    record.precision_at_threshold, record.recall_at_threshold, record.f1_score,
+                    record.feature_count, json.dumps(record.parameters), record.artifact_location, record.artifact_checksum, record.status, record.trained_at.isoformat(),
+                ),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_model(self, model_id: str) -> Optional[ModelRegistryRecord]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT model_id, model_name, model_version, algorithm, training_dataset_version,
+                       feature_version, target_definition, horizon_hours, training_start_date,
+                       training_end_date, validation_start_date, validation_end_date,
+                       test_start_date, test_end_date, auc_roc, pr_auc, precision_at_threshold,
+                       recall_at_threshold, f1_score, feature_count, parameters_json,
+                       artifact_location, artifact_checksum, status, trained_at
+                FROM COCO_FACTORY.ML.MODEL_REGISTRY
+                WHERE model_id = %s
+                """,
+                (model_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            params = json.loads(r[20]) if r[20] else {}
+            return ModelRegistryRecord(
+                model_id=r[0],
+                model_name=r[1],
+                model_version=r[2] or "",
+                algorithm=r[3],
+                training_dataset_version=r[4] or "v2026.03-canonical",
+                feature_version=r[5] or "v1.0-29feat",
+                target_definition=r[6] or "",
+                horizon_hours=int(r[7] or 168),
+                training_start_date=r[8],
+                training_end_date=r[9],
+                validation_start_date=r[10],
+                validation_end_date=r[11],
+                test_start_date=r[12],
+                test_end_date=r[13],
+                auc_roc=float(r[14]) if r[14] is not None else None,
+                pr_auc=float(r[15]) if r[15] is not None else None,
+                precision_at_threshold=float(r[16]) if r[16] is not None else None,
+                recall_at_threshold=float(r[17]) if r[17] is not None else None,
+                f1_score=float(r[18]) if r[18] is not None else None,
+                feature_count=int(r[19] or 29),
+                parameters=params,
+                artifact_location=r[21],
+                artifact_checksum=r[22],
+                status=r[23] or "candidate",
+                trained_at=r[24],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_active_model(self) -> Optional[ModelRegistryRecord]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT model_id, model_name, model_version, algorithm, training_dataset_version,
+                       feature_version, target_definition, horizon_hours, training_start_date,
+                       training_end_date, validation_start_date, validation_end_date,
+                       test_start_date, test_end_date, auc_roc, pr_auc, precision_at_threshold,
+                       recall_at_threshold, f1_score, feature_count, parameters_json,
+                       artifact_location, artifact_checksum, status, trained_at
+                FROM COCO_FACTORY.ML.MODEL_REGISTRY
+                WHERE status = 'active'
+                ORDER BY trained_at DESC
+                LIMIT 1
+                """
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            params = json.loads(r[20]) if r[20] else {}
+            return ModelRegistryRecord(
+                model_id=r[0],
+                model_name=r[1],
+                model_version=r[2] or "",
+                algorithm=r[3],
+                training_dataset_version=r[4] or "v2026.03-canonical",
+                feature_version=r[5] or "v1.0-29feat",
+                target_definition=r[6] or "",
+                horizon_hours=int(r[7] or 168),
+                training_start_date=r[8],
+                training_end_date=r[9],
+                validation_start_date=r[10],
+                validation_end_date=r[11],
+                test_start_date=r[12],
+                test_end_date=r[13],
+                auc_roc=float(r[14]) if r[14] is not None else None,
+                pr_auc=float(r[15]) if r[15] is not None else None,
+                precision_at_threshold=float(r[16]) if r[16] is not None else None,
+                recall_at_threshold=float(r[17]) if r[17] is not None else None,
+                f1_score=float(r[18]) if r[18] is not None else None,
+                feature_count=int(r[19] or 29),
+                parameters=params,
+                artifact_location=r[21],
+                artifact_checksum=r[22],
+                status=r[23] or "active",
+                trained_at=r[24],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_models(self, status: Optional[str] = None) -> List[ModelRegistryRecord]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            sql = """
+                SELECT model_id, model_name, model_version, algorithm, training_dataset_version,
+                       feature_version, target_definition, horizon_hours, training_start_date,
+                       training_end_date, validation_start_date, validation_end_date,
+                       test_start_date, test_end_date, auc_roc, pr_auc, precision_at_threshold,
+                       recall_at_threshold, f1_score, feature_count, parameters_json,
+                       artifact_location, artifact_checksum, status, trained_at
+                FROM COCO_FACTORY.ML.MODEL_REGISTRY
+            """
+            params = []
+            if status:
+                sql += " WHERE status = %s"
+                params.append(status)
+            sql += " ORDER BY trained_at DESC"
+            cur.execute(sql, tuple(params) if params else None)
+            rows = cur.fetchall()
+            res = []
+            for r in rows:
+                p_map = json.loads(r[20]) if r[20] else {}
+                res.append(
+                    ModelRegistryRecord(
+                        model_id=r[0],
+                        model_name=r[1],
+                        model_version=r[2] or "",
+                        algorithm=r[3],
+                        training_dataset_version=r[4] or "v2026.03-canonical",
+                        feature_version=r[5] or "v1.0-29feat",
+                        target_definition=r[6] or "",
+                        horizon_hours=int(r[7] or 168),
+                        training_start_date=r[8],
+                        training_end_date=r[9],
+                        validation_start_date=r[10],
+                        validation_end_date=r[11],
+                        test_start_date=r[12],
+                        test_end_date=r[13],
+                        auc_roc=float(r[14]) if r[14] is not None else None,
+                        pr_auc=float(r[15]) if r[15] is not None else None,
+                        precision_at_threshold=float(r[16]) if r[16] is not None else None,
+                        recall_at_threshold=float(r[17]) if r[17] is not None else None,
+                        f1_score=float(r[18]) if r[18] is not None else None,
+                        feature_count=int(r[19] or 29),
+                        parameters=p_map,
+                        artifact_location=r[21],
+                        artifact_checksum=r[22],
+                        status=r[23] or "candidate",
+                        trained_at=r[24],
+                    )
+                )
+            return res
+        finally:
+            cur.close()
+            conn.close()
+
+    def promote_model(self, model_id: str, target_status: str = "active") -> Optional[ModelRegistryRecord]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            if target_status == "active":
+                cur.execute(
+                    "UPDATE COCO_FACTORY.ML.MODEL_REGISTRY SET status = 'validated' WHERE status = 'active'"
+                )
+            cur.execute(
+                "UPDATE COCO_FACTORY.ML.MODEL_REGISTRY SET status = %s WHERE model_id = %s",
+                (target_status, model_id),
+            )
+            conn.commit()
+            return self.get_model(model_id)
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_evaluation(self, eval_record: ModelEvaluationRecord) -> None:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO COCO_FACTORY.ML.MODEL_EVALUATION (
+                    evaluation_id, model_id, model_version, split_name, sample_count,
+                    positive_count, roc_auc, pr_auc, precision_score, recall_score,
+                    f1_score, confusion_matrix_json, evaluated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    eval_record.evaluation_id,
+                    eval_record.model_id,
+                    eval_record.model_version,
+                    eval_record.split_name,
+                    eval_record.sample_count,
+                    eval_record.positive_count,
+                    eval_record.roc_auc,
+                    eval_record.pr_auc,
+                    eval_record.precision_score,
+                    eval_record.recall_score,
+                    eval_record.f1_score,
+                    json.dumps(eval_record.confusion_matrix),
+                    eval_record.evaluated_at.isoformat(),
+                ),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_evaluations(self, model_id: Optional[str] = None) -> List[ModelEvaluationRecord]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            sql = """
+                SELECT evaluation_id, model_id, model_version, split_name, sample_count,
+                       positive_count, roc_auc, pr_auc, precision_score, recall_score,
+                       f1_score, confusion_matrix_json, evaluated_at
+                FROM COCO_FACTORY.ML.MODEL_EVALUATION
+            """
+            params = []
+            if model_id:
+                sql += " WHERE model_id = %s"
+                params.append(model_id)
+            sql += " ORDER BY evaluated_at DESC"
+            cur.execute(sql, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                ModelEvaluationRecord(
+                    evaluation_id=r[0],
+                    model_id=r[1],
+                    model_version=r[2],
+                    split_name=r[3],
+                    sample_count=int(r[4]),
+                    positive_count=int(r[5]),
+                    roc_auc=float(r[6]),
+                    pr_auc=float(r[7]),
+                    precision_score=float(r[8]),
+                    recall_score=float(r[9]),
+                    f1_score=float(r[10]),
+                    confusion_matrix=json.loads(r[11]) if r[11] else {},
+                    evaluated_at=r[12],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_prediction_feature_snapshot(self, snapshot: PredictionFeatureSnapshot) -> None:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO COCO_FACTORY.ML.PREDICTION_FEATURE_SNAPSHOT (
+                    snapshot_id, prediction_id, machine_id, feature_timestamp,
+                    feature_version, features_json, source_window_start, source_window_end, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    snapshot.snapshot_id,
+                    snapshot.prediction_id,
+                    snapshot.machine_id,
+                    snapshot.feature_timestamp.isoformat(),
+                    snapshot.feature_version,
+                    json.dumps(snapshot.features),
+                    snapshot.source_window_start.isoformat() if snapshot.source_window_start else None,
+                    snapshot.source_window_end.isoformat() if snapshot.source_window_end else None,
+                    snapshot.created_at.isoformat(),
+                ),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_prediction_feature_snapshot(self, snapshot_id: str) -> Optional[PredictionFeatureSnapshot]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT snapshot_id, prediction_id, machine_id, feature_timestamp,
+                       feature_version, features_json, source_window_start, source_window_end, created_at
+                FROM COCO_FACTORY.ML.PREDICTION_FEATURE_SNAPSHOT
+                WHERE snapshot_id = %s
+                """,
+                (snapshot_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return PredictionFeatureSnapshot(
+                snapshot_id=r[0],
+                prediction_id=r[1],
+                machine_id=r[2],
+                feature_timestamp=r[3],
+                feature_version=r[4],
+                features=json.loads(r[5]) if r[5] else {},
+                source_window_start=r[6],
+                source_window_end=r[7],
+                created_at=r[8],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_prediction_lineage(self, lineage: PredictionLineage) -> None:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO COCO_FACTORY.ML.PREDICTION_LINEAGE (
+                    lineage_id, prediction_id, machine_id, model_id, model_version,
+                    feature_version, snapshot_id, inference_timestamp, failure_probability,
+                    risk_level, policy_version, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    lineage.lineage_id,
+                    lineage.prediction_id,
+                    lineage.machine_id,
+                    lineage.model_id,
+                    lineage.model_version,
+                    lineage.feature_version,
+                    lineage.snapshot_id,
+                    lineage.inference_timestamp.isoformat(),
+                    lineage.failure_probability,
+                    lineage.risk_level,
+                    lineage.policy_version,
+                    lineage.created_at.isoformat(),
+                ),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_prediction_lineage(self, prediction_id: str) -> Optional[PredictionLineage]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT lineage_id, prediction_id, machine_id, model_id, model_version,
+                       feature_version, snapshot_id, inference_timestamp, failure_probability,
+                       risk_level, policy_version, created_at
+                FROM COCO_FACTORY.ML.PREDICTION_LINEAGE
+                WHERE prediction_id = %s
+                """,
+                (prediction_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return PredictionLineage(
+                lineage_id=r[0],
+                prediction_id=r[1],
+                machine_id=r[2],
+                model_id=r[3],
+                model_version=r[4],
+                feature_version=r[5],
+                snapshot_id=r[6],
+                inference_timestamp=r[7],
+                failure_probability=float(r[8]),
+                risk_level=r[9],
+                policy_version=r[10],
+                created_at=r[11],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_prediction_by_id(self, prediction_id: str) -> Optional[MLFailurePrediction]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT prediction_id, machine_id, component_id, failure_mode, failure_probability,
+                       prediction_horizon_hours, model_name, model_version, training_dataset_version,
+                       feature_schema_version, confidence, threshold_exceeded, top_contributing_features,
+                       feature_timestamp, prediction_timestamp
+                FROM FACTORY_INTELLIGENCE.ML_PREDICTION
+                WHERE prediction_id = %s
+                """,
+                (prediction_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            top_feats = json.loads(r[12]) if (r[12] and isinstance(r[12], str)) else (r[12] or {})
+            return MLFailurePrediction(
+                prediction_id=r[0],
+                machine_id=r[1],
+                component_id=r[2],
+                failure_mode=FailureMode(r[3]),
+                failure_probability=float(r[4]),
+                prediction_horizon_hours=int(r[5]),
+                model_name=r[6],
+                model_version=r[7],
+                training_dataset_version=r[8],
+                feature_schema_version=r[9],
+                confidence=float(r[10]),
+                threshold_exceeded=bool(r[11]),
+                top_contributing_features=top_feats,
+                feature_timestamp=r[13],
+                prediction_timestamp=r[14],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_predictions_for_machine(self, machine_id: str, limit: int = 50) -> List[MLFailurePrediction]:
+        return self.list_predictions(machine_id=machine_id, limit=limit)
 

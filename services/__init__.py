@@ -10,6 +10,7 @@ from services.reliability_service import ReliabilityService
 from services.alert_service import AlertService
 from services.oee_service import OEEService, OEEResult
 from services.pipeline_orchestrator import PipelineOrchestrator, PipelineExecutionResult
+from services.prediction_service import PredictionService
 
 __all__ = [
     "TelemetryService",
@@ -24,5 +25,6 @@ __all__ = [
     "OEEResult",
     "PipelineOrchestrator",
     "PipelineExecutionResult",
+    "PredictionService",
 ]
 

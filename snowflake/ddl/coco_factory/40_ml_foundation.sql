@@ -8,17 +8,31 @@ USE SCHEMA ML;
 CREATE TABLE IF NOT EXISTS MODEL_REGISTRY (
     model_id                    VARCHAR(64) NOT NULL,
     model_name                  VARCHAR(128) NOT NULL,
-    version                     VARCHAR(32) NOT NULL,
+    model_version               VARCHAR(32) NOT NULL,
+    version                     VARCHAR(32),
     algorithm                   VARCHAR(64) NOT NULL,
+    training_dataset_version    VARCHAR(64) NOT NULL DEFAULT 'v2026.03-canonical',
+    feature_version             VARCHAR(32) NOT NULL DEFAULT 'v1.0-29feat',
+    target_definition           VARCHAR(256) NOT NULL DEFAULT 'qualifying failure in (T, T + 7d]',
+    horizon_hours               INT NOT NULL DEFAULT 168,
     horizon_days                INT NOT NULL DEFAULT 7,
     training_start_date         DATE,
     training_end_date           DATE,
+    validation_start_date       DATE,
+    validation_end_date         DATE,
+    test_start_date             DATE,
+    test_end_date               DATE,
     auc_roc                     FLOAT,
     pr_auc                      FLOAT,
     precision_at_threshold      FLOAT,
     recall_at_threshold         FLOAT,
-    feature_count               INT,
+    f1_score                    FLOAT,
+    feature_count               INT DEFAULT 29,
     parameters_json             VARCHAR(4096),
+    artifact_location           VARCHAR(512),
+    artifact_checksum           VARCHAR(128),
+    status                      VARCHAR(32) NOT NULL DEFAULT 'candidate', -- candidate, validated, active, retired
+    trained_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     created_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     CONSTRAINT pk_ml_model_registry PRIMARY KEY (model_id)
 );
@@ -229,4 +243,55 @@ CREATE TABLE IF NOT EXISTS INFERENCE_LOG (
     primary_feature_contributors VARCHAR(2048),
     created_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     CONSTRAINT pk_ml_inference_log PRIMARY KEY (inference_id)
+);
+
+-- 5. Model Evaluation Metrics
+CREATE TABLE IF NOT EXISTS MODEL_EVALUATION (
+    evaluation_id               VARCHAR(64) NOT NULL,
+    model_id                    VARCHAR(64) NOT NULL,
+    model_version               VARCHAR(32) NOT NULL,
+    split_name                  VARCHAR(32) NOT NULL, -- train, validation, test
+    sample_count                INT NOT NULL,
+    positive_count              INT NOT NULL,
+    roc_auc                     FLOAT,
+    pr_auc                      FLOAT,
+    precision_score             FLOAT,
+    recall_score                FLOAT,
+    f1_score                    FLOAT,
+    confusion_matrix_json       VARCHAR(1024),
+    evaluated_at                TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT pk_ml_model_evaluation PRIMARY KEY (evaluation_id),
+    CONSTRAINT fk_ml_eval_model FOREIGN KEY (model_id) REFERENCES COCO_FACTORY.ML.MODEL_REGISTRY(model_id)
+);
+
+-- 6. Prediction Feature Snapshot
+CREATE TABLE IF NOT EXISTS PREDICTION_FEATURE_SNAPSHOT (
+    snapshot_id                 VARCHAR(64) NOT NULL,
+    prediction_id               VARCHAR(64) NOT NULL,
+    machine_id                  VARCHAR(32) NOT NULL,
+    feature_timestamp           TIMESTAMP_NTZ NOT NULL,
+    feature_version             VARCHAR(32) NOT NULL,
+    features_json               VARCHAR(16384),
+    source_window_start         TIMESTAMP_NTZ,
+    source_window_end           TIMESTAMP_NTZ,
+    created_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT pk_ml_pred_feat_snapshot PRIMARY KEY (snapshot_id)
+);
+
+-- 7. Prediction Lineage
+CREATE TABLE IF NOT EXISTS PREDICTION_LINEAGE (
+    lineage_id                  VARCHAR(64) NOT NULL,
+    prediction_id               VARCHAR(64) NOT NULL,
+    machine_id                  VARCHAR(32) NOT NULL,
+    model_id                    VARCHAR(64) NOT NULL,
+    model_version               VARCHAR(32) NOT NULL,
+    feature_version             VARCHAR(32) NOT NULL,
+    snapshot_id                 VARCHAR(64) NOT NULL,
+    inference_timestamp         TIMESTAMP_NTZ NOT NULL,
+    failure_probability         FLOAT NOT NULL,
+    risk_level                  VARCHAR(32) NOT NULL,
+    policy_version              VARCHAR(32) NOT NULL,
+    created_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT pk_ml_pred_lineage PRIMARY KEY (lineage_id),
+    CONSTRAINT fk_ml_lineage_snapshot FOREIGN KEY (snapshot_id) REFERENCES COCO_FACTORY.ML.PREDICTION_FEATURE_SNAPSHOT(snapshot_id)
 );

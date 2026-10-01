@@ -29,6 +29,12 @@ from domain.models.analytics import (
     ProductionContext,
     ReliabilityFeatures,
 )
+from domain.models.ml import (
+    ModelRegistryRecord,
+    ModelEvaluationRecord,
+    PredictionFeatureSnapshot,
+    PredictionLineage,
+)
 
 __all__ = [
     "Plant",
@@ -82,4 +88,8 @@ __all__ = [
     "InventoryRisk",
     "ProductionContext",
     "ReliabilityFeatures",
+    "ModelRegistryRecord",
+    "ModelEvaluationRecord",
+    "PredictionFeatureSnapshot",
+    "PredictionLineage",
 ]

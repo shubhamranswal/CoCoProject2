@@ -54,6 +54,10 @@ from domain.models import (
     InventoryRisk,
     ProductionContext,
     ReliabilityFeatures,
+    ModelRegistryRecord,
+    ModelEvaluationRecord,
+    PredictionFeatureSnapshot,
+    PredictionLineage,
 )
 from repositories.base import (
     GovernanceRepository,
@@ -66,6 +70,7 @@ from repositories.base import (
     TelemetryRepository,
     AnalyticsRepository,
     KnowledgeSearchRepository,
+    MLRepository,
 )
 from data.generators.seed_data import (
     PLANT_01,
@@ -120,6 +125,7 @@ class InMemoryRepository(
     SupplyChainRepository,
     AnalyticsRepository,
     KnowledgeSearchRepository,
+    MLRepository,
 ):
     def __init__(self, seed: bool = True) -> None:
         self._lock = threading.RLock()
@@ -159,6 +165,10 @@ class InMemoryRepository(
         self._reliability_features: Dict[Tuple[str, date], ReliabilityFeatures] = {}
         self._knowledge_documents: Dict[str, KnowledgeDocument] = {}
         self._failure_modes: Dict[str, FailureModeTaxonomy] = {}
+        self._models: Dict[str, ModelRegistryRecord] = {}
+        self._evaluations: Dict[str, List[ModelEvaluationRecord]] = {}
+        self._prediction_snapshots: Dict[str, PredictionFeatureSnapshot] = {}
+        self._prediction_lineages: Dict[str, PredictionLineage] = {}
 
         if seed:
             self._seed_reference_data()
@@ -895,4 +905,87 @@ class InMemoryRepository(
             if category:
                 modes = [m for m in modes if m.category == category]
             return sorted(modes, key=lambda m: m.failure_code)
+
+    # MLRepository implementations
+    def save_model_metadata(self, record: ModelRegistryRecord) -> None:
+        with self._lock:
+            self._models[record.model_id] = record
+
+    def get_model(self, model_id: str) -> Optional[ModelRegistryRecord]:
+        with self._lock:
+            return self._models.get(model_id)
+
+    def get_active_model(self) -> Optional[ModelRegistryRecord]:
+        with self._lock:
+            # Active status has priority, most recently trained first
+            active = [m for m in self._models.values() if m.status == "active"]
+            if active:
+                return sorted(active, key=lambda m: _safe_dt(m.trained_at), reverse=True)[0]
+            return None
+
+    def list_models(self, status: Optional[str] = None) -> List[ModelRegistryRecord]:
+        with self._lock:
+            models = list(self._models.values())
+            if status:
+                models = [m for m in models if m.status == status]
+            return sorted(models, key=lambda m: _safe_dt(m.trained_at), reverse=True)
+
+    def promote_model(self, model_id: str, target_status: str = "active") -> Optional[ModelRegistryRecord]:
+        with self._lock:
+            rec = self._models.get(model_id)
+            if not rec:
+                return None
+            if target_status == "active":
+                # Demote other active models to validated
+                for m in self._models.values():
+                    if m.status == "active" and m.model_id != model_id:
+                        self._models[m.model_id] = m.model_copy(update={"status": "validated"})
+            updated = rec.model_copy(update={"status": target_status})
+            self._models[model_id] = updated
+            return updated
+
+    def save_evaluation(self, eval_record: ModelEvaluationRecord) -> None:
+        with self._lock:
+            if eval_record.model_id not in self._evaluations:
+                self._evaluations[eval_record.model_id] = []
+            self._evaluations[eval_record.model_id].append(eval_record)
+
+    def list_evaluations(self, model_id: Optional[str] = None) -> List[ModelEvaluationRecord]:
+        with self._lock:
+            if model_id:
+                return list(self._evaluations.get(model_id, []))
+            all_evals: List[ModelEvaluationRecord] = []
+            for evals in self._evaluations.values():
+                all_evals.extend(evals)
+            return sorted(all_evals, key=lambda e: _safe_dt(e.evaluated_at), reverse=True)
+
+    def save_prediction_feature_snapshot(self, snapshot: PredictionFeatureSnapshot) -> None:
+        with self._lock:
+            self._prediction_snapshots[snapshot.snapshot_id] = snapshot
+
+    def get_prediction_feature_snapshot(self, snapshot_id: str) -> Optional[PredictionFeatureSnapshot]:
+        with self._lock:
+            return self._prediction_snapshots.get(snapshot_id)
+
+    def save_prediction_lineage(self, lineage: PredictionLineage) -> None:
+        with self._lock:
+            self._prediction_lineages[lineage.prediction_id] = lineage
+
+    def get_prediction_lineage(self, prediction_id: str) -> Optional[PredictionLineage]:
+        with self._lock:
+            return self._prediction_lineages.get(prediction_id)
+
+    def get_prediction_by_id(self, prediction_id: str) -> Optional[MLFailurePrediction]:
+        with self._lock:
+            for preds in self._predictions.values():
+                for p in preds:
+                    if p.prediction_id == prediction_id:
+                        return p
+            return None
+
+    def get_predictions_for_machine(self, machine_id: str, limit: int = 50) -> List[MLFailurePrediction]:
+        with self._lock:
+            preds = list(self._predictions.get(machine_id, []))
+            preds.sort(key=lambda p: _safe_dt(p.prediction_timestamp), reverse=True)
+            return preds[:limit]
 

@@ -39,6 +39,10 @@ from domain.models import (
     MLFailurePrediction,
     PredictionOutcome,
     CanonicalPrediction,
+    ModelRegistryRecord,
+    ModelEvaluationRecord,
+    PredictionFeatureSnapshot,
+    PredictionLineage,
     Product,
     ProductionOrder,
     PurchaseOrder,
@@ -388,4 +392,50 @@ class KnowledgeSearchRepository(ABC):
     def list_failure_modes(
         self, category: Optional[str] = None
     ) -> List[FailureModeTaxonomy]: ...
+
+
+class MLRepository(ABC):
+    """Predictive production layer repository for models, evaluations, feature snapshots, and lineage."""
+
+    @abstractmethod
+    def save_model_metadata(self, record: ModelRegistryRecord) -> None: ...
+
+    @abstractmethod
+    def get_model(self, model_id: str) -> Optional[ModelRegistryRecord]: ...
+
+    @abstractmethod
+    def get_active_model(self) -> Optional[ModelRegistryRecord]: ...
+
+    @abstractmethod
+    def list_models(self, status: Optional[str] = None) -> List[ModelRegistryRecord]: ...
+
+    @abstractmethod
+    def promote_model(self, model_id: str, target_status: str = "active") -> Optional[ModelRegistryRecord]: ...
+
+    @abstractmethod
+    def save_evaluation(self, eval_record: ModelEvaluationRecord) -> None: ...
+
+    @abstractmethod
+    def list_evaluations(self, model_id: Optional[str] = None) -> List[ModelEvaluationRecord]: ...
+
+    @abstractmethod
+    def save_prediction_feature_snapshot(self, snapshot: PredictionFeatureSnapshot) -> None: ...
+
+    @abstractmethod
+    def get_prediction_feature_snapshot(self, snapshot_id: str) -> Optional[PredictionFeatureSnapshot]: ...
+
+    @abstractmethod
+    def save_prediction_lineage(self, lineage: PredictionLineage) -> None: ...
+
+    @abstractmethod
+    def get_prediction_lineage(self, prediction_id: str) -> Optional[PredictionLineage]: ...
+
+    @abstractmethod
+    def save_prediction(self, prediction: MLFailurePrediction) -> None: ...
+
+    @abstractmethod
+    def get_prediction_by_id(self, prediction_id: str) -> Optional[MLFailurePrediction]: ...
+
+    @abstractmethod
+    def get_predictions_for_machine(self, machine_id: str, limit: int = 50) -> List[MLFailurePrediction]: ...
 
