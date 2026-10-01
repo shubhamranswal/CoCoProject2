@@ -1857,6 +1857,33 @@ class SnowflakeRepository(
         cur = conn.cursor()
         try:
             import json
+            if execution.idempotency_key:
+                cur.execute(
+                    """
+                    SELECT execution_id, action_proposal_id, approval_id, action_type, machine_id, executed_by,
+                           status, idempotency_key, result_data, error_message, started_at, completed_at
+                    FROM COCO_FACTORY.APP.ACTION_EXECUTION WHERE idempotency_key = %s
+                    LIMIT 1
+                    """,
+                    (execution.idempotency_key,),
+                )
+                r = cur.fetchone()
+                if r:
+                    return ActionExecution(
+                        execution_id=r[0],
+                        action_proposal_id=r[1],
+                        approval_id=r[2],
+                        action_type=r[3],
+                        machine_id=r[4],
+                        executed_by=r[5],
+                        status=r[6],
+                        idempotency_key=r[7],
+                        result_data=json.loads(r[8]) if r[8] else {},
+                        error_message=r[9],
+                        started_at=r[10],
+                        completed_at=r[11],
+                    )
+
             cur.execute(
                 """
                 INSERT INTO COCO_FACTORY.APP.ACTION_EXECUTION

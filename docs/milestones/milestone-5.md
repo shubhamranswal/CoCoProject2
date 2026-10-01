@@ -144,7 +144,7 @@ The complete closed-loop product loop was validated on canonical asset **M21** (
 3. **RECOMMEND:** Advisory recommendation generates `ActionProposal` `PROP-M21-001` for bearing replacement and spare part reservation.
 4. **APPROVE:** Autonomous self-approval attempts by `ReliabilityAgent` and `CoCo` are rejected with `PermissionError`. Human operator `sarah.chen` approves the replacement proposal.
 5. **ACT:**
-   * Preconditions check `SP-002` (Deep Groove Ball Bearing 6205) $\rightarrow$ stockout detected (`stock_qty = 0`, `lead_time_days = 5`); reservation fails safely with honest shortage reporting.
+   * Preconditions check `SP-002` (`Drive-End Bearing 6206-2RS`, compatible model: `6206-2RS`, supplier: `SUP-12`, lead time: 5 days, stock: 0, reorder level: 2, reorder quantity: 4) $\rightarrow$ stockout detected (`stock_qty = 0`, `lead_time_days = 5`); reservation fails safely with honest shortage reporting.
    * Emergency work order is executed idempotently via `create_work_order`.
    * Technician completes physical bearing replacement.
 6. **VERIFY:**
@@ -152,6 +152,14 @@ The complete closed-loop product loop was validated on canonical asset **M21** (
    * Normalized post-maintenance telemetry (vibration reduced to $0.38$g, temperature $55^\circ$C, risk $0.10$) produces `VERIFIED`.
    * Work order marked `VERIFIED`, investigation marked `CLOSED`, machine marked `HEALTHY`.
 7. **LEARN:** `ActionOutcome` record persisted with ground truth label, confirming bearing degradation and recording $12.0$ hours of avoided downtime.
+
+> [!IMPORTANT]
+> **Physical-World Truth Boundary & Test Fixture Clarification:**
+> In the offline flagship integration test, the post-maintenance telemetry values (vibration $= 0.38$g, temperature $= 55^\circ$C, risk $= 0.10$) and avoided downtime ($12.0$ hours) are **test fixture / simulated post-maintenance inputs** designed to validate the deterministic evaluation logic. They are **not** claims of actual physical maintenance performed on the physical M21 machine.
+> 
+> The software execution strictly enforces the physical boundary:
+> $$\text{CREATE\_WORK\_ORDER} \rightarrow \text{Explicit Technician Completion Event} \rightarrow \text{Pipeline Telemetry Ingestion} \rightarrow \text{Deterministic Verification}$$
+> The production verification service evaluates telemetry delivered by the actual OT telemetry ingestion pipeline; the software application never infers physical repair completion merely because a work order was generated, nor does it physically replace components.
 
 ---
 

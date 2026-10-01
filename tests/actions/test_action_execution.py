@@ -217,3 +217,111 @@ def test_idempotent_execution_returns_prior_result(execution_env):
         idempotency_key="IDEM-STABLE-KEY-999",
     )
     assert exec2.execution_id == exec1.execution_id
+
+
+def test_repository_action_execution_idempotency(execution_env):
+    """Direct InMemoryRepository.save_action_execution with identical idempotency_key returns original record without duplicates."""
+    from domain.models import ActionExecution
+
+    repo, _, _ = execution_env
+
+    exec_1 = ActionExecution(
+        execution_id="EXEC-TEST-001",
+        action_proposal_id="PROP-TEST-001",
+        approval_id="APP-TEST-001",
+        action_type="CREATE_WORK_ORDER",
+        machine_id="M21",
+        executed_by="sarah.chen",
+        status="SUCCESS",
+        idempotency_key="IDEM-REPO-TEST-001",
+        result_data={"work_order_id": "WO-001"},
+    )
+    saved_1 = repo.save_action_execution(exec_1)
+    assert saved_1.execution_id == "EXEC-TEST-001"
+
+    # Attempt to save a distinct execution object with the same idempotency_key
+    exec_2 = ActionExecution(
+        execution_id="EXEC-TEST-002",
+        action_proposal_id="PROP-TEST-001",
+        approval_id="APP-TEST-001",
+        action_type="CREATE_WORK_ORDER",
+        machine_id="M21",
+        executed_by="sarah.chen",
+        status="SUCCESS",
+        idempotency_key="IDEM-REPO-TEST-001",
+        result_data={"work_order_id": "WO-DUPLICATE"},
+    )
+    saved_2 = repo.save_action_execution(exec_2)
+
+    assert saved_2.execution_id == "EXEC-TEST-001"
+    assert saved_2.result_data == {"work_order_id": "WO-001"}
+
+
+def test_snowflake_repository_save_action_execution_idempotency():
+    """SnowflakeRepository.save_action_execution checks idempotency_key and returns existing record if found."""
+    from unittest.mock import MagicMock
+    from domain.models import ActionExecution
+    from repositories.snowflake.snowflake_repository import SnowflakeRepository
+
+    mock_conn_mgr = MagicMock()
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_conn_mgr.get_connection.return_value = mock_conn
+    mock_conn.cursor.return_value = mock_cur
+
+    # Simulate existing record found in Snowflake APP.ACTION_EXECUTION
+    existing_row = (
+        "EXEC-EXISTING",
+        "PROP-1",
+        "APP-1",
+        "CREATE_WORK_ORDER",
+        "M21",
+        "SYSTEM",
+        "SUCCESS",
+        "IDEM-KEY-123",
+        '{"work_order_id": "WO-999"}',
+        None,
+        "2026-03-30T10:00:00",
+        "2026-03-30T10:01:00",
+    )
+    mock_cur.fetchone.return_value = existing_row
+
+    repo = SnowflakeRepository(connection_manager=mock_conn_mgr)
+
+    incoming_exec = ActionExecution(
+        execution_id="EXEC-NEW",
+        action_proposal_id="PROP-1",
+        approval_id="APP-1",
+        action_type="CREATE_WORK_ORDER",
+        machine_id="M21",
+        idempotency_key="IDEM-KEY-123",
+        result_data={"work_order_id": "WO-NEW"},
+    )
+
+    res = repo.save_action_execution(incoming_exec)
+
+    assert res.execution_id == "EXEC-EXISTING"
+    assert res.result_data == {"work_order_id": "WO-999"}
+
+    # Verify no INSERT was executed because idempotency hit
+    for call in mock_cur.execute.call_args_list:
+        query_sql = call[0][0]
+        assert "INSERT INTO" not in query_sql
+
+    # Next verify branch where idempotency does not match (returns new inserted object)
+    mock_cur.reset_mock()
+    mock_cur.fetchone.return_value = None
+
+    fresh_exec = ActionExecution(
+        execution_id="EXEC-FRESH",
+        action_proposal_id="PROP-1",
+        approval_id="APP-1",
+        action_type="CREATE_WORK_ORDER",
+        machine_id="M21",
+        idempotency_key="IDEM-KEY-FRESH",
+        result_data={"work_order_id": "WO-FRESH"},
+    )
+    res_fresh = repo.save_action_execution(fresh_exec)
+    assert res_fresh.execution_id == "EXEC-FRESH"
+    insert_calls = [c for c in mock_cur.execute.call_args_list if "INSERT INTO" in c[0][0]]
+    assert len(insert_calls) == 1
