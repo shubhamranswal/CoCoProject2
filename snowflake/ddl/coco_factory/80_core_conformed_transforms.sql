@@ -673,7 +673,9 @@ WHEN NOT MATCHED THEN INSERT (
     s.sensor_id, s.ts, s.run_fraction, s.avg_running, s.min_running, s.max_running
 );
 
--- 19. Transform SENSOR_READING (High Frequency Telemetry)
+-- 19. Transform SENSOR_READING (High Frequency Telemetry) - Idempotent
+TRUNCATE TABLE CORE.SENSOR_READING;
+
 INSERT INTO CORE.SENSOR_READING (sensor_id, ts, value)
 SELECT
     TRIM(sensor_id) AS sensor_id,

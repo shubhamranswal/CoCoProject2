@@ -90,10 +90,15 @@ class TestCanonicalDatasetCompleteness:
         assert df_wo is not None
         assert len(df_wo) == 637
 
-        # 13. Production Orders: 1,524 (PRD-00001 through PRD-01524)
+        # 13. Production Orders: exactly 1,524 data rows (1,525 total lines including header, PRD-00001 through PRD-01524)
         df_po = source_mgr.read_entity_df("production_order")
         assert df_po is not None
-        assert len(df_po) in (1524, 1525)
+        assert len(df_po) == 1524
+
+        # 14. Work Order Part Usage: exactly 671 data rows (672 total lines including header)
+        df_usage = source_mgr.read_entity_df("wo_part_usage")
+        assert df_usage is not None
+        assert len(df_usage) == 671
 
 
 class TestCanonicalReferentialIntegrity:
