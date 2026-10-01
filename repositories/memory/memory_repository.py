@@ -36,6 +36,11 @@ from domain.models import (
     Sensor,
     TelemetryMeasurement,
     Verification,
+    VerificationResult,
+    VerificationPolicy,
+    ActionProposal,
+    ActionExecution,
+    ActionOutcome,
     WorkOrder,
     MLFailurePrediction,
     PredictionOutcome,
@@ -228,6 +233,10 @@ class InMemoryRepository(
         self._evaluations: Dict[str, List[ModelEvaluationRecord]] = {}
         self._prediction_snapshots: Dict[str, PredictionFeatureSnapshot] = {}
         self._prediction_lineages: Dict[str, PredictionLineage] = {}
+        self._action_proposals: Dict[str, ActionProposal] = {}
+        self._action_executions: Dict[str, ActionExecution] = {}
+        self._action_outcomes: Dict[str, ActionOutcome] = {}
+        self._verification_policies: Dict[str, VerificationPolicy] = {}
 
         if seed:
             self._seed_reference_data()
@@ -436,6 +445,10 @@ class InMemoryRepository(
             self._documents.clear()
             self._predictions.clear()
             self._prediction_outcomes.clear()
+            self._action_proposals.clear()
+            self._action_executions.clear()
+            self._action_outcomes.clear()
+            self._verification_policies.clear()
             self._seed_reference_data()
 
     def get_anomalies(self, machine_id: str, active_only: bool = True) -> List[Anomaly]:
@@ -707,6 +720,93 @@ class InMemoryRepository(
         with self._lock:
             return sorted(self._audit_events, key=lambda a: a.timestamp, reverse=True)[:limit]
 
+    def save_action_proposal(self, proposal: ActionProposal) -> ActionProposal:
+        with self._lock:
+            if proposal.idempotency_key:
+                for existing in self._action_proposals.values():
+                    if existing.idempotency_key == proposal.idempotency_key:
+                        return existing
+            self._action_proposals[proposal.action_proposal_id] = proposal
+            return proposal
+
+    def get_action_proposal(self, action_proposal_id: str) -> Optional[ActionProposal]:
+        with self._lock:
+            return self._action_proposals.get(action_proposal_id)
+
+    def list_action_proposals(
+        self, machine_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[ActionProposal]:
+        with self._lock:
+            res = list(self._action_proposals.values())
+            if machine_id:
+                res = [p for p in res if p.machine_id == machine_id]
+            if status:
+                res = [p for p in res if p.status == status or (hasattr(p.status, "value") and p.status.value == status)]
+            return sorted(res, key=lambda p: _safe_dt(p.created_at), reverse=True)
+
+    def update_action_proposal(self, proposal: ActionProposal) -> ActionProposal:
+        with self._lock:
+            self._action_proposals[proposal.action_proposal_id] = proposal
+            return proposal
+
+    def save_action_execution(self, execution: ActionExecution) -> ActionExecution:
+        with self._lock:
+            if execution.idempotency_key:
+                for existing in self._action_executions.values():
+                    if existing.idempotency_key == execution.idempotency_key:
+                        return existing
+            self._action_executions[execution.execution_id] = execution
+            return execution
+
+    def get_action_execution(self, execution_id: str) -> Optional[ActionExecution]:
+        with self._lock:
+            return self._action_executions.get(execution_id)
+
+    def list_action_executions(
+        self, action_proposal_id: Optional[str] = None
+    ) -> List[ActionExecution]:
+        with self._lock:
+            res = list(self._action_executions.values())
+            if action_proposal_id:
+                res = [e for e in res if e.action_proposal_id == action_proposal_id]
+            return sorted(res, key=lambda e: _safe_dt(e.started_at), reverse=True)
+
+    def save_action_outcome(self, outcome: ActionOutcome) -> ActionOutcome:
+        with self._lock:
+            self._action_outcomes[outcome.outcome_id] = outcome
+            return outcome
+
+    def get_action_outcome(self, outcome_id: str) -> Optional[ActionOutcome]:
+        with self._lock:
+            return self._action_outcomes.get(outcome_id)
+
+    def list_action_outcomes(
+        self, machine_id: Optional[str] = None
+    ) -> List[ActionOutcome]:
+        with self._lock:
+            res = list(self._action_outcomes.values())
+            if machine_id:
+                res = [o for o in res if o.machine_id == machine_id]
+            return sorted(res, key=lambda o: _safe_dt(o.recorded_at), reverse=True)
+
+    def save_verification_policy(self, policy: VerificationPolicy) -> None:
+        with self._lock:
+            self._verification_policies[policy.policy_id] = policy
+
+    def get_verification_policy(
+        self, machine_id: Optional[str] = None, failure_mode: Optional[str] = None
+    ) -> Optional[VerificationPolicy]:
+        with self._lock:
+            if machine_id:
+                for pol in self._verification_policies.values():
+                    if pol.machine_id == machine_id:
+                        return pol
+            if failure_mode:
+                for pol in self._verification_policies.values():
+                    if pol.failure_mode == failure_mode:
+                        return pol
+            return self._verification_policies.get("DEFAULT_VIB_TEMP", VerificationPolicy())
+
     # KnowledgeRepository implementations
     def get_manual(self, machine_model: str) -> Optional[Document]:
         with self._lock:
@@ -797,6 +897,29 @@ class InMemoryRepository(
             if status:
                 orders = [o for o in orders if o.status == status]
             return sorted(orders, key=lambda o: o.due_date)
+
+    def reserve_spare_part(self, part_id: str, qty: int = 1) -> bool:
+        with self._lock:
+            part = self._spare_parts.get(part_id)
+            if not part:
+                return False
+            if part.stock_qty < qty:
+                return False
+            updated_part = SparePart(
+                part_id=part.part_id,
+                part_name=part.part_name,
+                part_category=part.part_category,
+                compatible_model=part.compatible_model,
+                unit_cost_inr=part.unit_cost_inr,
+                supplier_id=part.supplier_id,
+                lead_time_days=part.lead_time_days,
+                stock_qty=part.stock_qty - qty,
+                reorder_level=part.reorder_level,
+                reorder_qty=part.reorder_qty,
+                warehouse_bin=part.warehouse_bin,
+            )
+            self._spare_parts[part_id] = updated_part
+            return True
 
     # AnalyticsRepository implementations
     def get_machine_health_daily(

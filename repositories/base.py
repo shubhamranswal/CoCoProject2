@@ -32,6 +32,11 @@ from domain.models import (
     Sensor,
     TelemetryMeasurement,
     Verification,
+    VerificationResult,
+    VerificationPolicy,
+    ActionProposal,
+    ActionExecution,
+    ActionOutcome,
     WorkOrder,
     Document,
     KnowledgeDocument,
@@ -256,6 +261,50 @@ class GovernanceRepository(ABC):
     @abstractmethod
     def list_audit_events(self, limit: int = 50) -> List[AuditEvent]: ...
 
+    @abstractmethod
+    def save_action_proposal(self, proposal: ActionProposal) -> ActionProposal: ...
+
+    @abstractmethod
+    def get_action_proposal(self, action_proposal_id: str) -> Optional[ActionProposal]: ...
+
+    @abstractmethod
+    def list_action_proposals(
+        self, machine_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[ActionProposal]: ...
+
+    @abstractmethod
+    def update_action_proposal(self, proposal: ActionProposal) -> ActionProposal: ...
+
+    @abstractmethod
+    def save_action_execution(self, execution: ActionExecution) -> ActionExecution: ...
+
+    @abstractmethod
+    def get_action_execution(self, execution_id: str) -> Optional[ActionExecution]: ...
+
+    @abstractmethod
+    def list_action_executions(
+        self, action_proposal_id: Optional[str] = None
+    ) -> List[ActionExecution]: ...
+
+    @abstractmethod
+    def save_action_outcome(self, outcome: ActionOutcome) -> ActionOutcome: ...
+
+    @abstractmethod
+    def get_action_outcome(self, outcome_id: str) -> Optional[ActionOutcome]: ...
+
+    @abstractmethod
+    def list_action_outcomes(
+        self, machine_id: Optional[str] = None
+    ) -> List[ActionOutcome]: ...
+
+    @abstractmethod
+    def save_verification_policy(self, policy: VerificationPolicy) -> None: ...
+
+    @abstractmethod
+    def get_verification_policy(
+        self, machine_id: Optional[str] = None, failure_mode: Optional[str] = None
+    ) -> Optional[VerificationPolicy]: ...
+
 
 class KnowledgeRepository(ABC):
     @abstractmethod
@@ -300,6 +349,9 @@ class SupplyChainRepository(ABC):
     def list_production_orders(
         self, machine_id: Optional[str] = None, status: Optional[str] = None
     ) -> List[ProductionOrder]: ...
+
+    @abstractmethod
+    def reserve_spare_part(self, part_id: str, qty: int = 1) -> bool: ...
 
 
 class AnalyticsRepository(ABC):

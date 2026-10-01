@@ -36,6 +36,11 @@ from domain.models import (
     Sensor,
     TelemetryMeasurement,
     Verification,
+    VerificationResult,
+    VerificationPolicy,
+    ActionProposal,
+    ActionExecution,
+    ActionOutcome,
     WorkOrder,
     CanonicalPrediction,
     Product,
@@ -1711,6 +1716,433 @@ class SnowflakeRepository(
             cur.close()
             conn.close()
 
+    def save_action_proposal(self, proposal: ActionProposal) -> ActionProposal:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            import json
+            cur.execute(
+                """
+                MERGE INTO COCO_FACTORY.APP.ACTION_PROPOSAL target
+                USING (SELECT %s AS action_proposal_id) src
+                ON target.action_proposal_id = src.action_proposal_id
+                WHEN MATCHED THEN UPDATE SET
+                    status = %s,
+                    approval_id = %s,
+                    updated_at = CURRENT_TIMESTAMP()
+                WHEN NOT MATCHED THEN INSERT
+                    (action_proposal_id, investigation_id, recommendation_id, machine_id, component_id,
+                     action_type, priority, risk_level, reason, parameters, status, idempotency_key, approval_id, requires_approval)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    proposal.action_proposal_id,
+                    proposal.status if isinstance(proposal.status, str) else proposal.status.value,
+                    proposal.approval_id,
+                    proposal.action_proposal_id,
+                    proposal.investigation_id,
+                    proposal.recommendation_id,
+                    proposal.machine_id,
+                    proposal.component_id,
+                    proposal.action_type,
+                    proposal.priority.value if hasattr(proposal.priority, "value") else str(proposal.priority),
+                    proposal.risk_level,
+                    proposal.reason,
+                    json.dumps(proposal.parameters),
+                    proposal.status if isinstance(proposal.status, str) else proposal.status.value,
+                    proposal.idempotency_key,
+                    proposal.approval_id,
+                    proposal.requires_approval,
+                ),
+            )
+            conn.commit()
+            return proposal
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_action_proposal(self, action_proposal_id: str) -> Optional[ActionProposal]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            import json
+            cur.execute(
+                """
+                SELECT action_proposal_id, investigation_id, recommendation_id, machine_id, component_id,
+                       action_type, priority, risk_level, reason, parameters, status, idempotency_key,
+                       approval_id, requires_approval, created_at, updated_at
+                FROM COCO_FACTORY.APP.ACTION_PROPOSAL WHERE action_proposal_id = %s
+                """,
+                (action_proposal_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            params = json.loads(r[9]) if r[9] else {}
+            return ActionProposal(
+                action_proposal_id=r[0],
+                investigation_id=r[1],
+                recommendation_id=r[2],
+                machine_id=r[3],
+                component_id=r[4],
+                action_type=r[5],
+                priority=Priority(r[6]) if r[6] in ("LOW", "MEDIUM", "HIGH", "CRITICAL") else Priority.HIGH,
+                risk_level=r[7],
+                reason=r[8],
+                parameters=params,
+                status=r[10],
+                idempotency_key=r[11],
+                approval_id=r[12],
+                requires_approval=bool(r[13]),
+                created_at=r[14],
+                updated_at=r[15],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_action_proposals(
+        self, machine_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[ActionProposal]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            import json
+            query = """
+                SELECT action_proposal_id, investigation_id, recommendation_id, machine_id, component_id,
+                       action_type, priority, risk_level, reason, parameters, status, idempotency_key,
+                       approval_id, requires_approval, created_at, updated_at
+                FROM COCO_FACTORY.APP.ACTION_PROPOSAL WHERE 1=1
+            """
+            params = []
+            if machine_id:
+                query += " AND machine_id = %s"
+                params.append(machine_id)
+            if status:
+                query += " AND status = %s"
+                params.append(status)
+            query += " ORDER BY created_at DESC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                ActionProposal(
+                    action_proposal_id=r[0],
+                    investigation_id=r[1],
+                    recommendation_id=r[2],
+                    machine_id=r[3],
+                    component_id=r[4],
+                    action_type=r[5],
+                    priority=Priority(r[6]) if r[6] in ("LOW", "MEDIUM", "HIGH", "CRITICAL") else Priority.HIGH,
+                    risk_level=r[7],
+                    reason=r[8],
+                    parameters=json.loads(r[9]) if r[9] else {},
+                    status=r[10],
+                    idempotency_key=r[11],
+                    approval_id=r[12],
+                    requires_approval=bool(r[13]),
+                    created_at=r[14],
+                    updated_at=r[15],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def update_action_proposal(self, proposal: ActionProposal) -> ActionProposal:
+        return self.save_action_proposal(proposal)
+
+    def save_action_execution(self, execution: ActionExecution) -> ActionExecution:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            import json
+            cur.execute(
+                """
+                INSERT INTO COCO_FACTORY.APP.ACTION_EXECUTION
+                (execution_id, action_proposal_id, approval_id, action_type, machine_id, executed_by,
+                 status, idempotency_key, result_data, error_message, started_at, completed_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    execution.execution_id,
+                    execution.action_proposal_id,
+                    execution.approval_id,
+                    execution.action_type,
+                    execution.machine_id,
+                    execution.executed_by,
+                    execution.status,
+                    execution.idempotency_key,
+                    json.dumps(execution.result_data),
+                    execution.error_message,
+                    execution.started_at.isoformat() if execution.started_at else None,
+                    execution.completed_at.isoformat() if execution.completed_at else None,
+                ),
+            )
+            conn.commit()
+            return execution
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_action_execution(self, execution_id: str) -> Optional[ActionExecution]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            import json
+            cur.execute(
+                """
+                SELECT execution_id, action_proposal_id, approval_id, action_type, machine_id, executed_by,
+                       status, idempotency_key, result_data, error_message, started_at, completed_at
+                FROM COCO_FACTORY.APP.ACTION_EXECUTION WHERE execution_id = %s
+                """,
+                (execution_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return ActionExecution(
+                execution_id=r[0],
+                action_proposal_id=r[1],
+                approval_id=r[2],
+                action_type=r[3],
+                machine_id=r[4],
+                executed_by=r[5],
+                status=r[6],
+                idempotency_key=r[7],
+                result_data=json.loads(r[8]) if r[8] else {},
+                error_message=r[9],
+                started_at=r[10],
+                completed_at=r[11],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_action_executions(
+        self, action_proposal_id: Optional[str] = None
+    ) -> List[ActionExecution]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            import json
+            query = """
+                SELECT execution_id, action_proposal_id, approval_id, action_type, machine_id, executed_by,
+                       status, idempotency_key, result_data, error_message, started_at, completed_at
+                FROM COCO_FACTORY.APP.ACTION_EXECUTION WHERE 1=1
+            """
+            params = []
+            if action_proposal_id:
+                query += " AND action_proposal_id = %s"
+                params.append(action_proposal_id)
+            query += " ORDER BY started_at DESC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                ActionExecution(
+                    execution_id=r[0],
+                    action_proposal_id=r[1],
+                    approval_id=r[2],
+                    action_type=r[3],
+                    machine_id=r[4],
+                    executed_by=r[5],
+                    status=r[6],
+                    idempotency_key=r[7],
+                    result_data=json.loads(r[8]) if r[8] else {},
+                    error_message=r[9],
+                    started_at=r[10],
+                    completed_at=r[11],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_action_outcome(self, outcome: ActionOutcome) -> ActionOutcome:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO COCO_FACTORY.APP.ACTION_OUTCOME
+                (outcome_id, action_proposal_id, work_order_id, prediction_id, machine_id,
+                 failure_mode, observed_failure_confirmed, downtime_avoided_hours, verification_status,
+                 feedback_notes, recorded_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    outcome.outcome_id,
+                    outcome.action_proposal_id,
+                    outcome.work_order_id,
+                    outcome.prediction_id,
+                    outcome.machine_id,
+                    outcome.failure_mode if isinstance(outcome.failure_mode, str) else outcome.failure_mode.value,
+                    outcome.observed_failure_confirmed,
+                    outcome.downtime_avoided_hours,
+                    outcome.verification_status.value if hasattr(outcome.verification_status, "value") else str(outcome.verification_status),
+                    outcome.feedback_notes,
+                    outcome.recorded_at.isoformat() if outcome.recorded_at else None,
+                ),
+            )
+            conn.commit()
+            return outcome
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_action_outcome(self, outcome_id: str) -> Optional[ActionOutcome]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT outcome_id, action_proposal_id, work_order_id, prediction_id, machine_id,
+                       failure_mode, observed_failure_confirmed, downtime_avoided_hours, verification_status,
+                       feedback_notes, recorded_at
+                FROM COCO_FACTORY.APP.ACTION_OUTCOME WHERE outcome_id = %s
+                """,
+                (outcome_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return ActionOutcome(
+                outcome_id=r[0],
+                action_proposal_id=r[1],
+                work_order_id=r[2],
+                prediction_id=r[3],
+                machine_id=r[4],
+                failure_mode=r[5],
+                observed_failure_confirmed=bool(r[6]),
+                downtime_avoided_hours=float(r[7] or 0.0),
+                verification_status=VerificationStatus(r[8]),
+                feedback_notes=r[9] or "",
+                recorded_at=r[10],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_action_outcomes(
+        self, machine_id: Optional[str] = None
+    ) -> List[ActionOutcome]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT outcome_id, action_proposal_id, work_order_id, prediction_id, machine_id,
+                       failure_mode, observed_failure_confirmed, downtime_avoided_hours, verification_status,
+                       feedback_notes, recorded_at
+                FROM COCO_FACTORY.APP.ACTION_OUTCOME WHERE 1=1
+            """
+            params = []
+            if machine_id:
+                query += " AND machine_id = %s"
+                params.append(machine_id)
+            query += " ORDER BY recorded_at DESC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                ActionOutcome(
+                    outcome_id=r[0],
+                    action_proposal_id=r[1],
+                    work_order_id=r[2],
+                    prediction_id=r[3],
+                    machine_id=r[4],
+                    failure_mode=r[5],
+                    observed_failure_confirmed=bool(r[6]),
+                    downtime_avoided_hours=float(r[7] or 0.0),
+                    verification_status=VerificationStatus(r[8]),
+                    feedback_notes=r[9] or "",
+                    recorded_at=r[10],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_verification_policy(self, policy: VerificationPolicy) -> None:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                MERGE INTO COCO_FACTORY.APP.VERIFICATION_POLICY target
+                USING (SELECT %s AS policy_id) src
+                ON target.policy_id = src.policy_id
+                WHEN MATCHED THEN UPDATE SET
+                    max_acceptable_vibration_rms = %s,
+                    max_acceptable_temperature = %s,
+                    max_acceptable_risk_score = %s,
+                    min_vibration_reduction_pct = %s,
+                    min_risk_reduction_pct = %s
+                WHEN NOT MATCHED THEN INSERT
+                    (policy_id, machine_id, failure_mode, max_acceptable_vibration_rms, max_acceptable_temperature,
+                     max_acceptable_risk_score, min_vibration_reduction_pct, min_risk_reduction_pct,
+                     baseline_window_hours, verification_window_hours)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    policy.policy_id,
+                    policy.max_acceptable_vibration_rms,
+                    policy.max_acceptable_temperature,
+                    policy.max_acceptable_risk_score,
+                    policy.min_vibration_reduction_pct,
+                    policy.min_risk_reduction_pct,
+                    policy.policy_id,
+                    policy.machine_id,
+                    policy.failure_mode,
+                    policy.max_acceptable_vibration_rms,
+                    policy.max_acceptable_temperature,
+                    policy.max_acceptable_risk_score,
+                    policy.min_vibration_reduction_pct,
+                    policy.min_risk_reduction_pct,
+                    policy.baseline_window_hours,
+                    policy.verification_window_hours,
+                ),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_verification_policy(
+        self, machine_id: Optional[str] = None, failure_mode: Optional[str] = None
+    ) -> Optional[VerificationPolicy]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = "SELECT policy_id, machine_id, failure_mode, max_acceptable_vibration_rms, max_acceptable_temperature, max_acceptable_risk_score, min_vibration_reduction_pct, min_risk_reduction_pct, baseline_window_hours, verification_window_hours FROM COCO_FACTORY.APP.VERIFICATION_POLICY WHERE 1=1"
+            params = []
+            if machine_id:
+                query += " AND machine_id = %s"
+                params.append(machine_id)
+            if failure_mode:
+                query += " AND failure_mode = %s"
+                params.append(failure_mode)
+            query += " LIMIT 1"
+            cur.execute(query, tuple(params) if params else None)
+            r = cur.fetchone()
+            if not r:
+                return VerificationPolicy()
+            return VerificationPolicy(
+                policy_id=r[0],
+                machine_id=r[1],
+                failure_mode=r[2],
+                max_acceptable_vibration_rms=float(r[3] or 0.50),
+                max_acceptable_temperature=float(r[4] or 65.0),
+                max_acceptable_risk_score=float(r[5] or 0.25),
+                min_vibration_reduction_pct=float(r[6] or 30.0),
+                min_risk_reduction_pct=float(r[7] or 50.0),
+                baseline_window_hours=int(r[8] or 24),
+                verification_window_hours=int(r[9] or 24),
+            )
+        finally:
+            cur.close()
+            conn.close()
+
     # KnowledgeRepository
     def get_manual(self, machine_model: str) -> Optional[Document]:
         # Minimal retrieval for technical manual
@@ -2126,6 +2558,28 @@ class SnowflakeRepository(
                 )
                 for r in rows
             ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def reserve_spare_part(self, part_id: str, qty: int = 1) -> bool:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE COCO_FACTORY.CORE.SPARE_PART
+                SET stock_qty = stock_qty - %s
+                WHERE part_id = %s AND stock_qty >= %s
+                """,
+                (qty, part_id, qty),
+            )
+            rows_affected = cur.rowcount
+            conn.commit()
+            return rows_affected > 0
+        except Exception:
+            conn.rollback()
+            return False
         finally:
             cur.close()
             conn.close()

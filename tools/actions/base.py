@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, ValidationError
 
-from domain.enums import ApprovalStatus
+from domain.enums import ApprovalStatus, ToolMode
 from domain.exceptions import ApprovalExpiredError, ApprovalRequiredError, InvalidMachineError
 from domain.models import AuditEvent, ToolCall
 from repositories.base import GovernanceRepository
@@ -29,6 +29,7 @@ class BaseActionTool(ABC):
     name: str = ""
     description: str = ""
     scope: str = "action"
+    tool_mode: ToolMode = ToolMode.ACTION
     requires_approval: bool = True
     input_schema: Type[BaseModel] = BaseModel
     output_schema: Type[BaseModel] = BaseModel

@@ -165,3 +165,129 @@ CREATE TABLE IF NOT EXISTS INVESTIGATION_TOOL_CALL (
     CONSTRAINT pk_app_investigation_tool_call PRIMARY KEY (call_id),
     CONSTRAINT fk_tool_call_investigation FOREIGN KEY (investigation_id) REFERENCES APP.INVESTIGATION (investigation_id)
 );
+
+-- 10. Governed Action Proposals (M5 Action Pipeline)
+CREATE TABLE IF NOT EXISTS ACTION_PROPOSAL (
+    action_proposal_id          VARCHAR(64) NOT NULL,
+    investigation_id            VARCHAR(64) NOT NULL,
+    recommendation_id           VARCHAR(64) NOT NULL,
+    machine_id                  VARCHAR(32) NOT NULL,
+    component_id                VARCHAR(64),
+    action_type                 VARCHAR(64) NOT NULL,
+    priority                    VARCHAR(32) NOT NULL DEFAULT 'HIGH',
+    risk_level                  VARCHAR(32) NOT NULL DEFAULT 'HIGH',
+    reason                      VARCHAR(2048) NOT NULL,
+    parameters                  VARCHAR(4096),
+    status                      VARCHAR(32) NOT NULL DEFAULT 'PROPOSED',
+    idempotency_key             VARCHAR(128),
+    approval_id                 VARCHAR(64),
+    requires_approval           BOOLEAN DEFAULT TRUE,
+    created_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    updated_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT pk_app_action_proposal PRIMARY KEY (action_proposal_id),
+    CONSTRAINT fk_proposal_investigation FOREIGN KEY (investigation_id) REFERENCES APP.INVESTIGATION (investigation_id)
+);
+
+-- 11. Human Approval Audit & Gateway Records
+CREATE TABLE IF NOT EXISTS ACTION_APPROVAL (
+    approval_id                 VARCHAR(64) NOT NULL,
+    action_proposal_id          VARCHAR(64),
+    investigation_id            VARCHAR(64) NOT NULL,
+    machine_id                  VARCHAR(32) NOT NULL,
+    requested_action            VARCHAR(64) NOT NULL,
+    status                      VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    requested_by                VARCHAR(128) NOT NULL,
+    decision_by                 VARCHAR(128),
+    decision_at                 TIMESTAMP_NTZ,
+    decision_reason             VARCHAR(1024),
+    authorization_context       VARCHAR(2048),
+    expires_at                  TIMESTAMP_NTZ,
+    created_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT pk_app_action_approval PRIMARY KEY (approval_id)
+);
+
+-- 12. Governed Action Execution Log
+CREATE TABLE IF NOT EXISTS ACTION_EXECUTION (
+    execution_id                VARCHAR(64) NOT NULL,
+    action_proposal_id          VARCHAR(64) NOT NULL,
+    approval_id                 VARCHAR(64) NOT NULL,
+    action_type                 VARCHAR(64) NOT NULL,
+    machine_id                  VARCHAR(32) NOT NULL,
+    executed_by                 VARCHAR(128) NOT NULL,
+    status                      VARCHAR(32) NOT NULL DEFAULT 'SUCCESS',
+    idempotency_key             VARCHAR(128),
+    result_data                 VARCHAR(8192),
+    error_message               VARCHAR(2048),
+    started_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    completed_at                TIMESTAMP_NTZ,
+    CONSTRAINT pk_app_action_execution PRIMARY KEY (execution_id),
+    CONSTRAINT fk_execution_proposal FOREIGN KEY (action_proposal_id) REFERENCES APP.ACTION_PROPOSAL (action_proposal_id)
+);
+
+-- 13. Governed Action Security & Mutation Audit Trail
+CREATE TABLE IF NOT EXISTS ACTION_AUDIT (
+    audit_id                    VARCHAR(64) NOT NULL,
+    actor                       VARCHAR(128) NOT NULL,
+    action_type                 VARCHAR(64) NOT NULL,
+    resource_id                 VARCHAR(64) NOT NULL,
+    resource_type               VARCHAR(64) NOT NULL,
+    status                      VARCHAR(32) NOT NULL DEFAULT 'SUCCESS',
+    details                     VARCHAR(4096),
+    timestamp                   TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT pk_app_action_audit PRIMARY KEY (audit_id)
+);
+
+-- 14. Post-Maintenance Verification Policies
+CREATE TABLE IF NOT EXISTS VERIFICATION_POLICY (
+    policy_id                   VARCHAR(64) NOT NULL,
+    machine_id                  VARCHAR(32),
+    failure_mode                VARCHAR(64),
+    max_acceptable_vibration_rms FLOAT DEFAULT 0.50,
+    max_acceptable_temperature  FLOAT DEFAULT 65.0,
+    max_acceptable_risk_score   FLOAT DEFAULT 0.25,
+    min_vibration_reduction_pct FLOAT DEFAULT 30.0,
+    min_risk_reduction_pct      FLOAT DEFAULT 50.0,
+    baseline_window_hours       INT DEFAULT 24,
+    verification_window_hours   INT DEFAULT 24,
+    created_at                  TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT pk_app_verification_policy PRIMARY KEY (policy_id)
+);
+
+-- 15. Closed-Loop Telemetry Verification Results
+CREATE TABLE IF NOT EXISTS VERIFICATION_RESULT (
+    verification_id             VARCHAR(64) NOT NULL,
+    investigation_id            VARCHAR(64) NOT NULL,
+    work_order_id               VARCHAR(32) NOT NULL,
+    machine_id                  VARCHAR(32) NOT NULL,
+    action_execution_id         VARCHAR(64),
+    status                      VARCHAR(32) NOT NULL,
+    pre_vibration_rms           FLOAT,
+    post_vibration_rms          FLOAT,
+    pre_temperature_c           FLOAT,
+    post_temperature_c          FLOAT,
+    pre_risk_score              FLOAT,
+    post_risk_score             FLOAT,
+    risk_delta                  FLOAT DEFAULT 0.0,
+    is_recovered                BOOLEAN DEFAULT FALSE,
+    verification_reason         VARCHAR(2048),
+    evaluated_by                VARCHAR(128) DEFAULT 'SYSTEM',
+    verified_at                 TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT pk_app_verification_result PRIMARY KEY (verification_id)
+);
+
+-- 16. Closed-Loop Learning Outcomes (Historical Label Generation)
+CREATE TABLE IF NOT EXISTS ACTION_OUTCOME (
+    outcome_id                  VARCHAR(64) NOT NULL,
+    action_proposal_id          VARCHAR(64) NOT NULL,
+    work_order_id               VARCHAR(32) NOT NULL,
+    prediction_id               VARCHAR(64),
+    machine_id                  VARCHAR(32) NOT NULL,
+    failure_mode                VARCHAR(64) NOT NULL,
+    observed_failure_confirmed  BOOLEAN DEFAULT TRUE,
+    downtime_avoided_hours      FLOAT DEFAULT 0.0,
+    verification_status         VARCHAR(32) NOT NULL,
+    feedback_notes              VARCHAR(2048),
+    recorded_at                 TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    CONSTRAINT pk_app_action_outcome PRIMARY KEY (outcome_id)
+);
+

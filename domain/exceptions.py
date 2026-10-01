@@ -18,6 +18,9 @@ class CommandCenterError(Exception):
         self.entity_id = entity_id
 
 
+DomainError = CommandCenterError
+
+
 class ApprovalRequiredError(CommandCenterError, PermissionError):
     """Raised when an action is attempted without an approved Human Approval record."""
 

@@ -33,6 +33,7 @@ from domain.models import (
     FailureRisk,
     FeatureVector,
     Verification,
+    ActionOutcome,
 )
 from services.oee_service import OEEResult
 from repositories.base import (
@@ -84,15 +85,18 @@ class VerificationService:
         work_order_id: str,
         investigation_id: str,
         machine_id: str,
-        pre_features: FeatureVector,
-        post_features: FeatureVector,
-        pre_risk: FailureRisk,
-        post_risk: FailureRisk,
+        pre_features: Optional[FeatureVector] = None,
+        post_features: Optional[FeatureVector] = None,
+        pre_risk: Optional[FailureRisk] = None,
+        post_risk: Optional[FailureRisk] = None,
         pre_oee: Optional[OEEResult] = None,
         post_oee: Optional[OEEResult] = None,
         active_anomalies: Optional[List[Anomaly]] = None,
-        policy: Optional[VerificationPolicy] = None,
+        policy: Optional[Any] = None,
         verifier: str = "SYSTEM",
+        action_proposal_id: Optional[str] = None,
+        prediction_id: Optional[str] = None,
+        downtime_avoided_hours: float = 0.0,
     ) -> Verification:
         """Evaluate post-maintenance telemetry against verification policy and update system state."""
         pol = policy or VerificationPolicy()
@@ -100,6 +104,7 @@ class VerificationService:
         active_anoms = active_anomalies or []
 
         # Enforce prerequisite: work order must be COMPLETED
+        wo = None
         if self.maintenance_repo:
             wo = self.maintenance_repo.get_work_order(work_order_id)
             if wo and wo.status not in (WorkOrderStatus.COMPLETED, WorkOrderStatus.VERIFIED):
@@ -108,6 +113,65 @@ class VerificationService:
                     f"Work order must be COMPLETED before physical verification.",
                     entity_id=work_order_id,
                 )
+
+        # 0. Check for Missing Telemetry: missing telemetry MUST produce INCONCLUSIVE verdict, never success
+        if pre_features is None or post_features is None or pre_risk is None or post_risk is None:
+            status = VerificationStatus.INCONCLUSIVE
+            reason = (
+                "Physical verification INCONCLUSIVE: Post-maintenance physical sensor telemetry "
+                "or risk assessment is missing or incomplete. Cannot confirm physical recovery."
+            )
+            verification = Verification(
+                verification_id=f"VERIF-{work_order_id}-{int(now.timestamp())}",
+                investigation_id=investigation_id,
+                work_order_id=work_order_id,
+                machine_id=machine_id,
+                verified_at=now,
+                pre_vibration_rms=pre_features.vibration_rms if pre_features else None,
+                post_vibration_rms=post_features.vibration_rms if post_features else None,
+                pre_temperature_c=pre_features.temperature_mean if pre_features else None,
+                post_temperature_c=post_features.temperature_mean if post_features else None,
+                pre_risk_score=pre_risk.risk_score if pre_risk else None,
+                post_risk_score=post_risk.risk_score if post_risk else None,
+                risk_delta=0.0,
+                pre_oee=pre_oee.oee if pre_oee else 0.0,
+                post_oee=post_oee.oee if post_oee else 0.0,
+                oee_delta=0.0,
+                anomalies_before=0,
+                anomalies_after=0,
+                is_recovered=False,
+                verification_status=status,
+                verification_reason=reason,
+                oee_recovery_pct=0.0,
+                notes=f"Evaluated with verifier '{verifier}'. Telemetry missing -> INCONCLUSIVE.",
+            )
+            self.repo.save_verification(verification)
+
+            # Record ActionOutcome for closed-loop learning
+            if hasattr(self.repo, "save_action_outcome"):
+                self.repo.save_action_outcome(
+                    ActionOutcome(
+                        outcome_id=f"OUT-{work_order_id}-{int(now.timestamp())}",
+                        action_proposal_id=action_proposal_id or getattr(wo, "action_proposal_id", None) or f"PROP-{work_order_id}",
+                        work_order_id=work_order_id,
+                        prediction_id=prediction_id,
+                        machine_id=machine_id,
+                        failure_mode=getattr(wo, "failure_mode", "BEARING_DEGRADATION") if wo else "BEARING_DEGRADATION",
+                        observed_failure_confirmed=False,
+                        downtime_avoided_hours=0.0,
+                        verification_status=status,
+                        feedback_notes=reason,
+                        recorded_at=now,
+                    )
+                )
+
+            self._log_audit(
+                actor=verifier,
+                action_type="VERIFICATION_EVALUATED_INCONCLUSIVE",
+                resource_id=verification.verification_id,
+                details={"work_order_id": work_order_id, "status": "INCONCLUSIVE", "reason": reason},
+            )
+            return verification
 
         # 1. Calculate physical and operational deltas
         risk_delta = round(post_risk.risk_score - pre_risk.risk_score, 4)
@@ -200,7 +264,25 @@ class VerificationService:
 
         self.repo.save_verification(verification)
 
-        # 4. Governed Lifecycle Transitions
+        # 4. Record ActionOutcome for Closed-Loop Learning
+        if hasattr(self.repo, "save_action_outcome"):
+            self.repo.save_action_outcome(
+                ActionOutcome(
+                    outcome_id=f"OUT-{work_order_id}-{int(now.timestamp())}",
+                    action_proposal_id=action_proposal_id or getattr(wo, "action_proposal_id", None) or f"PROP-{work_order_id}",
+                    work_order_id=work_order_id,
+                    prediction_id=prediction_id,
+                    machine_id=machine_id,
+                    failure_mode=getattr(wo, "failure_mode", "BEARING_DEGRADATION") if wo else "BEARING_DEGRADATION",
+                    observed_failure_confirmed=True,
+                    downtime_avoided_hours=downtime_avoided_hours if status == VerificationStatus.VERIFIED else 0.0,
+                    verification_status=status,
+                    feedback_notes=reason,
+                    recorded_at=now,
+                )
+            )
+
+        # 5. Governed Lifecycle Transitions
         if status == VerificationStatus.VERIFIED:
             # Advance Work Order to VERIFIED
             if self.maintenance_repo:
@@ -239,7 +321,7 @@ class VerificationService:
                     )
                     self.investigation_repo.update_investigation(updated_inv)
 
-        elif status == VerificationStatus.FAILED:
+        elif status in (VerificationStatus.FAILED, VerificationStatus.VERIFICATION_FAILED):
             if self.investigation_repo:
                 inv = self.investigation_repo.get_investigation(investigation_id)
                 if inv:
@@ -251,7 +333,7 @@ class VerificationService:
                     )
                     self.investigation_repo.update_investigation(updated_inv)
 
-        # 5. Governance Audit Event
+        # 6. Governance Audit Event
         self._log_audit(
             actor=verifier,
             action_type="VERIFICATION_EVALUATED",

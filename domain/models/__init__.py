@@ -17,7 +17,16 @@ from domain.models.intelligence import (
     InvestigationResult,
     ToolEvidence,
 )
-from domain.models.governance import Action, Approval, Verification, AuditEvent
+from domain.models.governance import (
+    Action,
+    Approval,
+    Verification,
+    VerificationResult,
+    VerificationPolicy,
+    ActionExecution,
+    ActionOutcome,
+    AuditEvent,
+)
 from domain.models.agent import AgentExecution, ToolCall
 from domain.models.knowledge import Document, KnowledgeChunk, KnowledgeDocument, FailureModeTaxonomy
 from domain.models.freshness import DataFreshness
@@ -79,6 +88,10 @@ __all__ = [
     "Action",
     "Approval",
     "Verification",
+    "VerificationResult",
+    "VerificationPolicy",
+    "ActionExecution",
+    "ActionOutcome",
     "AuditEvent",
     "AgentExecution",
     "ToolCall",

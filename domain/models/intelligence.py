@@ -111,16 +111,30 @@ class Recommendation(BaseModel):
 class ActionProposal(BaseModel):
     action_proposal_id: str
     investigation_id: str
-    action_type: str  # INSPECT_BEARING_ASSEMBLY, CREATE_WORK_ORDER
+    action_type: str  # INSPECT_BEARING_ASSEMBLY, CREATE_WORK_ORDER, RESERVE_SPARE_PART, ASSIGN_TECHNICIAN
     machine_id: str
     component_id: Optional[str] = None
     priority: Priority = Priority.HIGH
     reason: str
-    recommendation_id: str
+    recommendation_id: str = "REC-ADVISORY"
     evidence_ids: List[str] = Field(default_factory=list)
     risk_level: str = "HIGH"
     requires_approval: bool = True
     approval_id: Optional[str] = None
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    status: str = "PROPOSED"  # Matches ActionProposalStatus (e.g. PROPOSED, PENDING_APPROVAL, APPROVED, etc.)
+    idempotency_key: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: Optional[datetime] = None
+
+    def __init__(self, **data: Any) -> None:
+        if "proposal_id" in data and "action_proposal_id" not in data:
+            data["action_proposal_id"] = data["proposal_id"]
+        super().__init__(**data)
+
+    @property
+    def proposal_id(self) -> str:
+        return self.action_proposal_id
 
 
 class InvestigationRequest(BaseModel):
