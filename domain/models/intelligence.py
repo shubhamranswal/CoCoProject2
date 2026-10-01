@@ -174,4 +174,5 @@ class InvestigationResult(BaseModel):
     recommendations: List[Recommendation] = Field(default_factory=list)
     evidence_refs: List[str] = Field(default_factory=list)
     limitations: List[str] = Field(default_factory=list)
+    provenance: Dict[str, Any] = Field(default_factory=dict)
     status: InvestigationStatus = InvestigationStatus.COMPLETED

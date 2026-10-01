@@ -425,6 +425,7 @@ class InvestigationService:
                 "tool_count": len(self.tools.list_tools()),
                 "evidence_count": len(collected_evidence),
                 "adapter": self.reasoner.__class__.__name__,
+                "execution_mode": raw_result.provenance.get("execution_mode", getattr(self.reasoner, "last_execution_mode", "DETERMINISTIC")),
             },
             summary=raw_result.summary,
             started_at=started_at,

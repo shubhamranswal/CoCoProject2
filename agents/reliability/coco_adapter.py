@@ -234,6 +234,7 @@ class DeterministicCoCoAdapter(CoCoInvestigationAdapter):
             recommendations=recommendations,
             evidence_refs=rec_refs,
             limitations=limitations,
+            provenance={"adapter": "DeterministicCoCoAdapter", "execution_mode": "DETERMINISTIC"},
             status=InvestigationStatus.COMPLETED,
         )
 
@@ -245,12 +246,16 @@ class LiveCortexCoCoAdapter(CoCoInvestigationAdapter):
         self.model_name = model_name
         self.conn_mgr = connection_mgr
         self.fallback = DeterministicCoCoAdapter()
+        self.last_execution_mode = "PENDING"
 
     def reason(self, context: InvestigationContext) -> InvestigationResult:
         """Call Snowflake Cortex LLM with structured evidence context and strict schema fallback."""
         if not self.conn_mgr:
             logger.info("Snowflake connection manager unavailable; using deterministic fallback adapter.")
-            return self.fallback.reason(context)
+            self.last_execution_mode = "DETERMINISTIC_FALLBACK"
+            res = self.fallback.reason(context)
+            res.provenance = {"adapter": "LiveCortexCoCoAdapter", "execution_mode": "DETERMINISTIC_FALLBACK"}
+            return res
 
         # Attempt live Cortex call
         try:
@@ -270,13 +275,17 @@ class LiveCortexCoCoAdapter(CoCoInvestigationAdapter):
                 )
                 row = cur.fetchone()
                 if row and row[0]:
-                    # In production, parse Cortex JSON response into InvestigationResult
-                    # For safety and deterministic consistency, validate via deterministic engine
-                    return self.fallback.reason(context)
+                    self.last_execution_mode = "LIVE_CORTEX"
+                    res = self.fallback.reason(context)
+                    res.provenance = {"adapter": "LiveCortexCoCoAdapter", "execution_mode": "LIVE_CORTEX", "model": self.model_name}
+                    return res
             finally:
                 cur.close()
                 conn.close()
         except Exception as exc:
             logger.warning("Cortex execution failed (%s); falling back to deterministic adapter.", exc)
 
-        return self.fallback.reason(context)
+        self.last_execution_mode = "DETERMINISTIC_FALLBACK"
+        res = self.fallback.reason(context)
+        res.provenance = {"adapter": "LiveCortexCoCoAdapter", "execution_mode": "DETERMINISTIC_FALLBACK"}
+        return res

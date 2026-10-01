@@ -105,3 +105,25 @@ def test_trigger_resolution_from_prediction(service, repo):
     assert comp_id == "C-M21-BRG"
     assert pred is not None
     assert pred.prediction_id == "PRED-000322"
+
+
+def test_investigation_provenance_distinguishes_fallback_from_live(repo):
+    """Verify that using LiveCortexCoCoAdapter without live credentials explicitly records DETERMINISTIC_FALLBACK in provenance."""
+    from agents.reliability.coco_adapter import LiveCortexCoCoAdapter
+    adapter = LiveCortexCoCoAdapter(connection_mgr=None)
+    svc = InvestigationService(repository=repo, reasoner=adapter)
+
+    req = InvestigationRequest(
+        request_id="REQ-005",
+        investigation_id="INV-PROV-01",
+        trigger_type=TriggerType.MACHINE,
+        machine_id="M21",
+    )
+
+    res = svc.investigate(req)
+    assert res.provenance.get("execution_mode") == "DETERMINISTIC_FALLBACK"
+
+    persisted = repo.get_investigation("INV-PROV-01")
+    assert persisted is not None
+    assert persisted.provenance.get("execution_mode") == "DETERMINISTIC_FALLBACK"
+    assert persisted.provenance.get("adapter") == "LiveCortexCoCoAdapter"
