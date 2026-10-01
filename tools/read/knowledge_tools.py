@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-from domain.models import Document
+from domain.models import Document, KnowledgeDocument
 from tools.read.base import BaseReadTool
 
 
 class GetMachineDocumentationInput(BaseModel):
-    machine_model: str = Field(..., description="Target equipment model, e.g. 'DRV-5000'")
+    machine_model: str = Field(..., description="Target equipment model, e.g. 'DRV-5000' or 'GR-600'")
 
 
 class DocumentOutput(BaseModel):
@@ -30,6 +30,114 @@ class GetMachineDocumentationTool(BaseReadTool):
         return DocumentOutput(machine_model=params.machine_model, document=doc)
 
 
+class KnowledgeSearchResultItem(BaseModel):
+    document_id: str
+    title: str
+    document_type: str = "guidance"
+    section: Optional[str] = None
+    content_excerpt: str
+    relevance: float = 1.0
+    source_reference: str = ""
+
+
+class SearchKnowledgeInput(BaseModel):
+    query: str = Field(..., description="Technical keywords or failure symptoms to search, e.g. 'bearing vibration degradation'")
+    machine_id: Optional[str] = Field(default=None, description="Optional machine ID, e.g. 'M21'")
+    component_id: Optional[str] = Field(default=None, description="Optional component ID, e.g. 'C-M21-BRG'")
+    failure_code: Optional[str] = Field(default=None, description="Optional failure code, e.g. 'BD-BRG'")
+    top_k: int = Field(default=5, ge=1, le=20, description="Max results to retrieve")
+
+
+class SearchKnowledgeOutput(BaseModel):
+    query: str
+    results_count: int
+    results: List[KnowledgeSearchResultItem] = Field(default_factory=list)
+
+
+class SearchKnowledgeTool(BaseReadTool):
+    name = "search_knowledge"
+    description = "Search engineering manuals, ISO vibration severity tables, and maintenance procedures for diagnostic guidance."
+    scope = "knowledge:read"
+    input_schema = SearchKnowledgeInput
+    output_schema = SearchKnowledgeOutput
+
+    def _run(self, params: SearchKnowledgeInput) -> SearchKnowledgeOutput:
+        # Check KnowledgeSearchRepository
+        search_fn = getattr(self.repo, "search_corpus", None)
+        docs: List[KnowledgeDocument] = []
+        if callable(search_fn):
+            docs = search_fn(query=params.query, limit=params.top_k, failure_code=params.failure_code)
+
+        if not docs:
+            # Fallback to list_documents
+            list_fn = getattr(self.repo, "list_documents", None)
+            if callable(list_fn):
+                all_docs = list_fn()
+                # Simple keyword filter
+                q_words = set(params.query.lower().split())
+                for d in all_docs:
+                    c_words = set(d.content.lower().split()) if hasattr(d, "content") else set()
+                    t_words = set(d.title.lower().split()) if hasattr(d, "title") else set()
+                    if q_words.intersection(c_words | t_words):
+                        docs.append(d)
+                docs = docs[:params.top_k]
+
+        items: List[KnowledgeSearchResultItem] = []
+        for d in docs:
+            excerpt = d.content[:400] + ("..." if len(d.content) > 400 else "") if hasattr(d, "content") else ""
+            items.append(
+                KnowledgeSearchResultItem(
+                    document_id=d.doc_id if hasattr(d, "doc_id") else getattr(d, "document_id", "DOC-001"),
+                    title=d.title,
+                    document_type=getattr(d, "doc_type", "reference"),
+                    content_excerpt=excerpt,
+                    relevance=0.92,
+                    source_reference=f"Manual:{getattr(d, 'doc_id', 'DOC')}",
+                )
+            )
+
+        return SearchKnowledgeOutput(
+            query=params.query,
+            results_count=len(items),
+            results=items,
+        )
+
+
+class GetKnowledgeDocumentInput(BaseModel):
+    document_id: str = Field(..., description="Document identifier, e.g. 'DOC-001'")
+
+
+class KnowledgeDocumentOutput(BaseModel):
+    document_id: str
+    title: str
+    document_type: str
+    content: str
+    machine_type: Optional[str] = None
+    component_type: Optional[str] = None
+
+
+class GetKnowledgeDocumentTool(BaseReadTool):
+    name = "get_knowledge_document"
+    description = "Retrieve full text content and metadata of a specific engineering knowledge document."
+    scope = "knowledge:read"
+    input_schema = GetKnowledgeDocumentInput
+    output_schema = Optional[KnowledgeDocumentOutput]
+
+    def _run(self, params: GetKnowledgeDocumentInput) -> Optional[KnowledgeDocumentOutput]:
+        doc = getattr(self.repo, "get_document", lambda did: None)(params.document_id)
+        if not doc:
+            return None
+        return KnowledgeDocumentOutput(
+            document_id=doc.doc_id,
+            title=doc.title,
+            document_type=doc.doc_type,
+            content=doc.content,
+            machine_type=doc.machine_type,
+            component_type=doc.component_type,
+        )
+
+
+# Backward compatibility
 class GetRelatedKnowledgeInput(BaseModel):
     machine_id: str = Field(..., description="Target machine ID, e.g. 'M204'")
     component_id: Optional[str] = Field(default=None, description="Optional target component ID")

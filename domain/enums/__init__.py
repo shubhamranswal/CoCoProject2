@@ -131,10 +131,18 @@ class SensorType(str, Enum):
     FLOW = "FLOW"
 
 
+class ToolMode(str, Enum):
+    READ = "READ"
+    ACTION = "ACTION"
+
+
 class TriggerType(str, Enum):
+    PREDICTION = "PREDICTION"
+    MACHINE = "MACHINE"
     ALERT = "ALERT"
     CRITICAL_ALERT = "CRITICAL_ALERT"
     PREDICTIVE_FAILURE = "PREDICTIVE_FAILURE"
+    USER_QUERY = "USER_QUERY"
     EVENT = "EVENT"
     SCHEDULE = "SCHEDULE"
     USER = "USER"

@@ -11,9 +11,10 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 from datetime import date, datetime, timezone
+import json
 import threading
 
-from domain.enums import AlertStatus, ApprovalStatus, HealthStatus, MachineState, WorkOrderStatus
+from domain.enums import AlertStatus, ApprovalStatus, FailureMode, HealthStatus, MachineState, WorkOrderStatus
 from domain.models import (
     Alert,
     Anomaly,
@@ -112,6 +113,64 @@ def _safe_dt(dt: Optional[datetime]) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def _canonical_to_ml_prediction(cp: CanonicalPrediction) -> MLFailurePrediction:
+    """Map canonical CORE.PREDICTION record into domain MLFailurePrediction."""
+    comp_id = cp.suspected_component_id or ""
+    if "BRG" in comp_id:
+        fmode = FailureMode.BEARING_DEGRADATION
+    elif "MTR" in comp_id:
+        fmode = FailureMode.MOTOR_OVERHEAT
+    elif "HYD" in comp_id:
+        fmode = FailureMode.HYDRAULIC_LOSS
+    elif "GRB" in comp_id:
+        fmode = FailureMode.GEARBOX_WEAR
+    else:
+        fmode = FailureMode.BEARING_DEGRADATION
+
+    top_feats: Dict[str, float] = {}
+    if cp.top_features:
+        try:
+            parsed = json.loads(cp.top_features) if isinstance(cp.top_features, str) else cp.top_features
+            if isinstance(parsed, dict):
+                top_feats = {str(k): float(v) for k, v in parsed.items()}
+            elif isinstance(parsed, list):
+                for item in parsed:
+                    if isinstance(item, dict) and "feature" in item and "share" in item:
+                        top_feats[str(item["feature"])] = float(item["share"])
+                    elif isinstance(item, dict) and len(item) == 1:
+                        k, v = next(iter(item.items()))
+                        top_feats[str(k)] = float(v)
+        except Exception:
+            top_feats = {}
+
+    horizon_hours = int(cp.horizon_days) * 24 if cp.horizon_days else 168
+    scored_ts = cp.scored_ts
+    if isinstance(scored_ts, str):
+        try:
+            scored_ts = datetime.fromisoformat(scored_ts)
+        except Exception:
+            scored_ts = datetime.now(timezone.utc)
+
+    prob = float(cp.failure_prob)
+    return MLFailurePrediction(
+        prediction_id=cp.prediction_id,
+        machine_id=cp.machine_id,
+        component_id=cp.suspected_component_id,
+        failure_mode=fmode,
+        failure_probability=prob,
+        prediction_horizon_hours=horizon_hours,
+        model_name=cp.model_name,
+        model_version="1.0.0",
+        training_dataset_version="v2026.03-canonical",
+        feature_schema_version="v1.0-29feat",
+        confidence=0.95 if prob >= 0.70 else 0.88,
+        threshold_exceeded=prob >= 0.40,
+        top_contributing_features=top_feats,
+        feature_timestamp=scored_ts,
+        prediction_timestamp=scored_ts,
+    )
 
 
 class InMemoryRepository(
@@ -480,9 +539,12 @@ class InMemoryRepository(
     def get_latest_prediction(self, machine_id: str) -> Optional[MLFailurePrediction]:
         with self._lock:
             items = self._predictions.get(machine_id, [])
-            if not items:
-                return None
-            return sorted(items, key=lambda p: p.prediction_timestamp, reverse=True)[0]
+            if items:
+                return sorted(items, key=lambda p: p.prediction_timestamp, reverse=True)[0]
+            cpreds = self.list_canonical_predictions(machine_id=machine_id, limit=1)
+            if cpreds:
+                return _canonical_to_ml_prediction(cpreds[0])
+            return None
 
     def list_predictions(
         self, machine_id: Optional[str] = None, limit: int = 50
@@ -492,6 +554,9 @@ class InMemoryRepository(
                 items = list(self._predictions.get(machine_id, []))
             else:
                 items = [p for sub in self._predictions.values() for p in sub]
+            if not items:
+                cpreds = self.list_canonical_predictions(machine_id=machine_id, limit=limit)
+                return [_canonical_to_ml_prediction(cp) for cp in cpreds]
             return sorted(items, key=lambda p: p.prediction_timestamp, reverse=True)[:limit]
 
     def save_prediction_outcome(self, outcome: PredictionOutcome) -> None:
@@ -551,7 +616,9 @@ class InMemoryRepository(
             for ev in evidence:
                 inv = self._investigations.get(ev.investigation_id)
                 if inv:
-                    inv.evidence.append(ev)
+                    existing_ids = {e.evidence_id for e in inv.evidence}
+                    if ev.evidence_id not in existing_ids:
+                        inv.evidence.append(ev)
 
     def update_investigation(self, investigation: Investigation) -> Investigation:
         with self._lock:
@@ -981,6 +1048,9 @@ class InMemoryRepository(
                 for p in preds:
                     if p.prediction_id == prediction_id:
                         return p
+            cp = self._canonical_predictions.get(prediction_id)
+            if cp:
+                return _canonical_to_ml_prediction(cp)
             return None
 
     def get_predictions_for_machine(self, machine_id: str, limit: int = 50) -> List[MLFailurePrediction]:

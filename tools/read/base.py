@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Type
 from pydantic import BaseModel, ValidationError
 
+from domain.enums import ToolMode
 from domain.models import ToolCall
 
 
@@ -25,6 +26,9 @@ class BaseReadTool(ABC):
     name: str = ""
     description: str = ""
     scope: str = "read"
+    tool_mode: ToolMode = ToolMode.READ
+    mode: str = "READ"
+    authorization_boundary: str = "READ_ONLY"
     input_schema: Type[BaseModel] = BaseModel
     output_schema: Type[BaseModel] = BaseModel
 

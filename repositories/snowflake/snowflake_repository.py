@@ -3350,3 +3350,152 @@ class SnowflakeRepository(
     def get_predictions_for_machine(self, machine_id: str, limit: int = 50) -> List[MLFailurePrediction]:
         return self.list_predictions(machine_id=machine_id, limit=limit)
 
+    # COCO_FACTORY.APP Investigation Persistence (Milestone 4)
+    def save_app_investigation(self, investigation: Investigation) -> None:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                MERGE INTO COCO_FACTORY.APP.INVESTIGATION target
+                USING (SELECT %s AS investigation_id) src
+                ON target.investigation_id = src.investigation_id
+                WHEN MATCHED THEN UPDATE SET
+                    status = %s,
+                    confidence = %s,
+                    summary = %s,
+                    completed_at = %s
+                WHEN NOT MATCHED THEN INSERT (
+                    investigation_id, trigger_type, trigger_id, prediction_id, alert_id,
+                    machine_id, component_id, scope, status, failure_mode, confidence,
+                    summary, started_at, completed_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    investigation.investigation_id,
+                    investigation.status.value if hasattr(investigation.status, "value") else str(investigation.status),
+                    investigation.confidence,
+                    investigation.summary,
+                    investigation.completed_at.isoformat() if investigation.completed_at else None,
+                    investigation.investigation_id,
+                    investigation.trigger_type.value if hasattr(investigation.trigger_type, "value") else str(investigation.trigger_type or "PREDICTION"),
+                    investigation.trigger_id or investigation.prediction_id,
+                    investigation.prediction_id,
+                    investigation.alert_id,
+                    investigation.machine_id,
+                    investigation.component_id,
+                    investigation.scope or "EQUIPMENT_RELIABILITY",
+                    investigation.status.value if hasattr(investigation.status, "value") else str(investigation.status),
+                    investigation.failure_mode.value if hasattr(investigation.failure_mode, "value") else str(investigation.failure_mode),
+                    investigation.confidence,
+                    investigation.summary,
+                    investigation.started_at.isoformat() if investigation.started_at else None,
+                    investigation.completed_at.isoformat() if investigation.completed_at else None,
+                ),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_app_investigation(self, investigation_id: str) -> Optional[Investigation]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT investigation_id, trigger_type, trigger_id, prediction_id, alert_id,
+                       machine_id, component_id, scope, status, failure_mode, confidence,
+                       summary, started_at, completed_at, created_at
+                FROM COCO_FACTORY.APP.INVESTIGATION
+                WHERE investigation_id = %s
+                """,
+                (investigation_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return Investigation(
+                investigation_id=r[0],
+                trigger_id=r[2],
+                prediction_id=r[3],
+                alert_id=r[4],
+                machine_id=r[5],
+                component_id=r[6],
+                scope=r[7],
+                status=r[8],
+                failure_mode=FailureMode(r[9]) if r[9] else FailureMode.BEARING_DEGRADATION,
+                confidence=float(r[10]) if r[10] is not None else 0.88,
+                summary=r[11],
+                started_at=r[12],
+                completed_at=r[13],
+                created_at=r[14],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_app_evidence(self, evidence: List[Evidence]) -> None:
+        if not evidence:
+            return
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            params = [
+                (
+                    ev.evidence_id,
+                    ev.investigation_id,
+                    ev.evidence_type,
+                    ev.category or ev.evidence_type,
+                    ev.source,
+                    ev.source_type,
+                    ev.source_id,
+                    ev.metric,
+                    str(ev.observed_value) if ev.observed_value is not None else None,
+                    ev.unit,
+                    ev.severity,
+                    ev.relationship,
+                    ev.machine_id,
+                    ev.component_id,
+                    ev.claim,
+                    ev.summary,
+                    ev.source_reference,
+                )
+                for ev in evidence
+            ]
+            cur.executemany(
+                """
+                MERGE INTO COCO_FACTORY.APP.INVESTIGATION_EVIDENCE target
+                USING (SELECT %s AS evidence_id) src
+                ON target.evidence_id = src.evidence_id
+                WHEN NOT MATCHED THEN INSERT (
+                    evidence_id, investigation_id, evidence_type, category, source,
+                    source_type, source_id, metric, observed_value, unit, severity,
+                    relationship, machine_id, component_id, claim, summary, source_reference
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                [(p[0], *p) for p in params],
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_app_tool_call(self, call_id: str, investigation_id: str, tool_name: str, scope: str, parameters: str, record_count: int, duration_ms: float, success: bool = True, error_message: Optional[str] = None) -> None:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO COCO_FACTORY.APP.INVESTIGATION_TOOL_CALL (
+                    call_id, investigation_id, tool_name, tool_mode, scope,
+                    parameters, record_count, duration_ms, success, error_message
+                ) VALUES (%s, %s, %s, 'READ', %s, %s, %s, %s, %s, %s)
+                """,
+                (call_id, investigation_id, tool_name, scope, parameters, record_count, duration_ms, success, error_message),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+

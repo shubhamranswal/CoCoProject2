@@ -5,7 +5,18 @@ from domain.models.telemetry import TelemetryMeasurement, FeatureVector, Baselin
 from domain.models.production import ProductionRun, DowntimeEvent
 from domain.models.reliability import Failure, FailureRisk, HealthAssessment, MLFailurePrediction, PredictionOutcome
 from domain.models.maintenance import MaintenanceEvent, WorkOrder
-from domain.models.intelligence import Alert, Evidence, Hypothesis, Finding, Recommendation, Investigation, ActionProposal
+from domain.models.intelligence import (
+    Alert,
+    Evidence,
+    Hypothesis,
+    Finding,
+    Recommendation,
+    Investigation,
+    ActionProposal,
+    InvestigationRequest,
+    InvestigationResult,
+    ToolEvidence,
+)
 from domain.models.governance import Action, Approval, Verification, AuditEvent
 from domain.models.agent import AgentExecution, ToolCall
 from domain.models.knowledge import Document, KnowledgeChunk, KnowledgeDocument, FailureModeTaxonomy
@@ -62,6 +73,9 @@ __all__ = [
     "Recommendation",
     "Investigation",
     "ActionProposal",
+    "InvestigationRequest",
+    "InvestigationResult",
+    "ToolEvidence",
     "Action",
     "Approval",
     "Verification",
