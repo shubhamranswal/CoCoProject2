@@ -36,13 +36,8 @@ class RiskPolicy:
         self.version = version
 
     def classify_canonical_tier(self, probability: float) -> str:
-        """Classify probability into canonical 3-tier risk string ('high', 'medium', 'low')."""
-        prob = max(0.0, min(1.0, float(probability)))
-        if prob >= self.high_threshold:
-            return "high"
-        if prob >= self.medium_threshold:
-            return "medium"
-        return "low"
+        """Classify probability into canonical risk level string ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')."""
+        return self.classify_risk_level(probability).value
 
     def classify_risk_level(self, probability: float) -> RiskLevel:
         """Classify probability into domain RiskLevel enum (LOW, MEDIUM, HIGH, CRITICAL)."""
@@ -52,6 +47,22 @@ class RiskPolicy:
         if prob >= self.high_threshold:
             return RiskLevel.HIGH
         if prob >= self.medium_threshold:
+            return RiskLevel.MEDIUM
+        return RiskLevel.LOW
+
+    def classify(self, probability: float) -> RiskLevel:
+        """Alias for classify_risk_level."""
+        return self.classify_risk_level(probability)
+
+    @staticmethod
+    def map_legacy_risk_level(legacy_str: str) -> RiskLevel:
+        """Explicitly map legacy historical records (e.g., PRED-000322 'high') without modifying source data."""
+        s = str(legacy_str).strip().upper()
+        if s in ("CRITICAL", "VERY_HIGH"):
+            return RiskLevel.CRITICAL
+        if s in ("HIGH",):
+            return RiskLevel.HIGH
+        if s in ("MEDIUM", "MODERATE"):
             return RiskLevel.MEDIUM
         return RiskLevel.LOW
 

@@ -74,7 +74,7 @@ def test_m21_production_inference_and_lineage():
 
     # 2. Probability and Risk Tier
     assert pred.failure_probability >= 0.85, f"Expected high failure probability, got {pred.failure_probability}"
-    assert lineage.risk_level == "high"
+    assert lineage.risk_level == "CRITICAL"
     assert policy.classify_risk_level(pred.failure_probability) == RiskLevel.CRITICAL
 
     # 3. Top Contributing Features

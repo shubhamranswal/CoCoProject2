@@ -107,7 +107,7 @@ def test_prediction_service_generates_snapshot_and_lineage():
     assert lineage.prediction_id == pred.prediction_id
     assert lineage.snapshot_id == snapshot.snapshot_id
     assert lineage.failure_probability == pred.failure_probability
-    assert lineage.risk_level == "high"
+    assert lineage.risk_level == "CRITICAL"
 
     saved_lineage = repo.get_prediction_lineage(pred.prediction_id)
     assert saved_lineage is not None

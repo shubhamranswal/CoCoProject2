@@ -9,23 +9,36 @@ def test_deterministic_risk_mapping():
     policy = RiskPolicy()
 
     # Low risk
-    assert policy.classify_canonical_tier(0.0) == "low"
-    assert policy.classify_canonical_tier(0.25) == "low"
-    assert policy.classify_canonical_tier(0.399) == "low"
+    assert policy.classify_canonical_tier(0.0) == "LOW"
+    assert policy.classify_canonical_tier(0.25) == "LOW"
+    assert policy.classify_canonical_tier(0.399) == "LOW"
     assert policy.classify_risk_level(0.25) == RiskLevel.LOW
 
     # Medium risk
-    assert policy.classify_canonical_tier(0.40) == "medium"
-    assert policy.classify_canonical_tier(0.55) == "medium"
-    assert policy.classify_canonical_tier(0.699) == "medium"
+    assert policy.classify_canonical_tier(0.40) == "MEDIUM"
+    assert policy.classify_canonical_tier(0.55) == "MEDIUM"
+    assert policy.classify_canonical_tier(0.699) == "MEDIUM"
     assert policy.classify_risk_level(0.55) == RiskLevel.MEDIUM
 
-    # High / Critical risk
-    assert policy.classify_canonical_tier(0.70) == "high"
-    assert policy.classify_canonical_tier(0.80) == "high"
-    assert policy.classify_canonical_tier(0.95) == "high"
+    # High risk
+    assert policy.classify_canonical_tier(0.70) == "HIGH"
+    assert policy.classify_canonical_tier(0.80) == "HIGH"
     assert policy.classify_risk_level(0.75) == RiskLevel.HIGH
+
+    # Critical risk
+    assert policy.classify_canonical_tier(0.85) == "CRITICAL"
+    assert policy.classify_canonical_tier(0.95) == "CRITICAL"
     assert policy.classify_risk_level(0.95) == RiskLevel.CRITICAL
+
+
+def test_map_legacy_risk_level():
+    policy = RiskPolicy()
+    assert policy.map_legacy_risk_level("high") == RiskLevel.HIGH
+    assert policy.map_legacy_risk_level("HIGH") == RiskLevel.HIGH
+    assert policy.map_legacy_risk_level("critical") == RiskLevel.CRITICAL
+    assert policy.map_legacy_risk_level("CRITICAL") == RiskLevel.CRITICAL
+    assert policy.map_legacy_risk_level("medium") == RiskLevel.MEDIUM
+    assert policy.map_legacy_risk_level("low") == RiskLevel.LOW
 
 
 def test_risk_policy_immutability_and_version():
@@ -39,6 +52,6 @@ def test_risk_policy_immutability_and_version():
 
 def test_clamped_extremes():
     policy = RiskPolicy()
-    assert policy.classify_canonical_tier(-0.5) == "low"
-    assert policy.classify_canonical_tier(1.5) == "high"
+    assert policy.classify_canonical_tier(-0.5) == "LOW"
+    assert policy.classify_canonical_tier(1.5) == "CRITICAL"
     assert policy.classify_risk_level(2.0) == RiskLevel.CRITICAL
