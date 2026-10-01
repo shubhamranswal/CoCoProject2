@@ -7,7 +7,7 @@ Follows AGENT.md v2.0 (Milestone 2 - Phase 2G):
 - Predictive ML: PRED-000322 (failure_prob: 0.950, risk_level: high, top feature: VIB_max 0.50)
 - Failure mode taxonomy: BD-BRG (Mechanical bearing breakdown)
 - Inventory exposure: SP-002 (stock_qty: 0, critical exposure: True, lead time: 5 days, supplier SUP-12)
-- Customer order exposure: PRD-01278 (Keystone Hydraulics, due 2026-09-29, 211 units remaining, INR 3.376M exposure)
+- Customer order exposure: PRD-01278 (Keystone Hydraulics, due 2026-09-29, 211 units remaining, INR 83,134 exposure)
 - Knowledge corpus: DOC-001, DOC-002, DOC-010, DOC-011, DOC-014
 """
 
@@ -104,16 +104,20 @@ class TestM21EvidenceChain:
         assert supplier.supplier_name == "Vertex Industrial Supplies"
 
     def test_m21_production_order_financial_exposure(self, repo: InMemoryRepository):
-        """Order PRD-01278 on M21 must show Keystone Hydraulics exposure of INR 3,376,000."""
+        """Order PRD-01278 on M21 must show Keystone Hydraulics exposure of INR 83,134."""
         ctx = repo.get_production_context("PRD-01278")
         assert ctx is not None
         assert ctx.machine_id == "M21"
         assert ctx.customer == "Keystone Hydraulics"
+        assert ctx.product_id == "P008"
+        assert ctx.product_name == "Mounting Flange MF-25"
+        assert ctx.unit_price_inr == 394.0
+        assert ctx.order_value_inr == 1534236.0
         assert ctx.status == "in_progress"
         assert ctx.planned_qty == 3894
         assert ctx.produced_qty == 3683
         assert ctx.due_date == date(2026, 9, 29)
-        assert ctx.unfulfilled_revenue_exposure_inr == 3376000.0
+        assert ctx.unfulfilled_revenue_exposure_inr == 83134.0
 
     def test_m21_knowledge_corpus_resolution(self, repo: InMemoryRepository):
         """Corpus search for bearing troubleshooting must retrieve DOC-001 and DOC-002."""

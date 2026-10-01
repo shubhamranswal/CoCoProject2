@@ -753,7 +753,7 @@ CANONICAL_PRODUCTION_CONTEXTS: List[ProductionContext] = [
         machine_name="Grinder 3",
         line_id="L5",
         product_id="P008",
-        product_name="High-Pressure Hydraulic Cylinder Shaft",
+        product_name="Mounting Flange MF-25",
         customer="Keystone Hydraulics",
         priority="Medium",
         status="in_progress",
@@ -763,9 +763,9 @@ CANONICAL_PRODUCTION_CONTEXTS: List[ProductionContext] = [
         due_date=date(2026, 9, 29),
         days_until_due=1,
         is_overdue=False,
-        unit_price_inr=16000.0,
-        order_value_inr=62304000.0,
-        unfulfilled_revenue_exposure_inr=3376000.0,
+        unit_price_inr=394.0,
+        order_value_inr=1534236.0,
+        unfulfilled_revenue_exposure_inr=83134.0,
     )
 ]
 

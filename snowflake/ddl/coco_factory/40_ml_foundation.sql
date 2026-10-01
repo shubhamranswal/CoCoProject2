@@ -143,13 +143,17 @@ downtime_7d AS (
     FROM COCO_FACTORY.CORE.DOWNTIME_EVENT
     GROUP BY machine_id, DATE(start_ts)
 ),
-maint_events AS (
+maint_prior AS (
     SELECT
-        machine_id,
-        DATE(closed_ts) AS closed_date,
-        ROW_NUMBER() OVER (PARTITION BY machine_id ORDER BY closed_ts DESC) AS rn
-    FROM COCO_FACTORY.CORE.MAINTENANCE_WORK_ORDER
-    WHERE status = 'closed'
+        rf.machine_id,
+        rf.feature_date,
+        MAX(DATE(w.closed_ts)) AS last_maint_date
+    FROM rolling_features rf
+    LEFT JOIN COCO_FACTORY.CORE.MAINTENANCE_WORK_ORDER w
+        ON rf.machine_id = w.machine_id
+        AND w.status = 'closed'
+        AND DATE(w.closed_ts) <= rf.feature_date
+    GROUP BY rf.machine_id, rf.feature_date
 )
 SELECT
     rf.machine_id,
@@ -194,7 +198,7 @@ SELECT
     ROUND(rf.flw_max, 4) AS flw_max,
     0.0 AS flw_slope7,
     1.0 AS flw_rel30,
-    COALESCE(DATEDIFF(day, me.closed_date, rf.feature_date), 120.0) AS days_since_maint,
+    COALESCE(DATEDIFF(day, mp.last_maint_date, rf.feature_date), 120.0) AS days_since_maint,
     0 AS maintenance_count_30d,
     COALESCE(dt.daily_downtime, 0.0) AS downtime_minutes_7d,
     m.criticality AS machine_criticality,
@@ -211,7 +215,7 @@ LEFT JOIN (
     GROUP BY machine_id
 ) c ON rf.machine_id = c.machine_id
 LEFT JOIN downtime_7d dt ON rf.machine_id = dt.machine_id AND rf.feature_date = dt.dt_date
-LEFT JOIN maint_events me ON rf.machine_id = me.machine_id AND me.rn = 1;
+LEFT JOIN maint_prior mp ON rf.machine_id = mp.machine_id AND rf.feature_date = mp.feature_date;
 
 -- 4. Inference Log
 CREATE TABLE IF NOT EXISTS INFERENCE_LOG (

@@ -172,7 +172,7 @@ The complete cross-domain reliability evidence chain for primary spotlight machi
   Customer Order: PRD-01278 (Customer: Keystone Hydraulics)
   Due Date: 2026-09-29 (1 day remaining)
   Unfulfilled Units: 211 units (Produced 3,683 of 3,894)
-  Revenue at Risk: INR 3,376,000
+  Revenue at Risk: INR 83,134 (211 units x ₹394)
        ↓
 [Knowledge Resolution]
   Documents: DOC-001 (Bearing Troubleshooting SOP), DOC-002 (ISO 10816 Limits),

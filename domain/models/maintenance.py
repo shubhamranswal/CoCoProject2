@@ -24,6 +24,18 @@ class MaintenanceEvent(BaseModel):
     actions_performed: List[str] = Field(default_factory=list)
     notes: str = ""
 
+    @property
+    def timestamp(self) -> datetime:
+        return self.performed_at
+
+    @property
+    def event_type(self) -> str:
+        return self.maintenance_type
+
+    @property
+    def description(self) -> str:
+        return self.notes or (self.findings or "")
+
 
 class WorkOrder(BaseModel):
     work_order_id: str

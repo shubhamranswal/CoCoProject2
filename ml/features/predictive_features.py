@@ -152,14 +152,20 @@ def extract_predictive_features(
 
     # 5. Maintenance Context Features
     maint_events = maintenance_events or []
+    def _event_ts(ev: Any) -> datetime:
+        raw_ts = getattr(ev, "timestamp", getattr(ev, "performed_at", None))
+        if raw_ts is None:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return raw_ts.replace(tzinfo=timezone.utc) if raw_ts.tzinfo is None else raw_ts
+
     # Only events strictly prior to as_of
     past_maint = [
         e for e in maint_events
-        if (e.timestamp.replace(tzinfo=timezone.utc) if e.timestamp.tzinfo is None else e.timestamp) <= as_of
+        if _event_ts(e) <= as_of
     ]
     if past_maint:
-        last_m = max(past_maint, key=lambda e: e.timestamp)
-        days_since_maint = max(0.0, (as_of - last_m.timestamp).total_seconds() / 86400.0)
+        last_m = max(past_maint, key=_event_ts)
+        days_since_maint = max(0.0, (as_of - _event_ts(last_m)).total_seconds() / 86400.0)
     else:
         days_since_maint = float(op_ctx.get("days_since_last_maintenance", 45.0))
 
