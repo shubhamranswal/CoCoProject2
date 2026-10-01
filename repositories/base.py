@@ -8,6 +8,7 @@ Follows AGENT.md:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import date
 from typing import List, Optional
 
 from domain.enums import AlertStatus, ApprovalStatus, HealthStatus, MachineState, WorkOrderStatus
@@ -33,6 +34,8 @@ from domain.models import (
     Verification,
     WorkOrder,
     Document,
+    KnowledgeDocument,
+    FailureModeTaxonomy,
     MLFailurePrediction,
     PredictionOutcome,
     CanonicalPrediction,
@@ -42,6 +45,13 @@ from domain.models import (
     SparePart,
     Supplier,
     WorkOrderPartUsage,
+    MachineHealthDaily,
+    MachineOEEDaily,
+    DowntimeSummary,
+    MaintenanceSummary,
+    InventoryRisk,
+    ProductionContext,
+    ReliabilityFeatures,
 )
 
 
@@ -286,4 +296,96 @@ class SupplyChainRepository(ABC):
     def list_production_orders(
         self, machine_id: Optional[str] = None, status: Optional[str] = None
     ) -> List[ProductionOrder]: ...
+
+
+class AnalyticsRepository(ABC):
+    """Canonical factory repository for analytical views and operational KPIs."""
+
+    @abstractmethod
+    def get_machine_health_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[MachineHealthDaily]: ...
+
+    @abstractmethod
+    def list_machine_health_daily(
+        self, metric_date: Optional[date] = None, line_id: Optional[str] = None
+    ) -> List[MachineHealthDaily]: ...
+
+    @abstractmethod
+    def get_machine_oee_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[MachineOEEDaily]: ...
+
+    @abstractmethod
+    def list_machine_oee_daily(
+        self, metric_date: Optional[date] = None, line_id: Optional[str] = None
+    ) -> List[MachineOEEDaily]: ...
+
+    @abstractmethod
+    def get_downtime_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[DowntimeSummary]: ...
+
+    @abstractmethod
+    def list_downtime_daily(
+        self, metric_date: Optional[date] = None
+    ) -> List[DowntimeSummary]: ...
+
+    @abstractmethod
+    def get_maintenance_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[MaintenanceSummary]: ...
+
+    @abstractmethod
+    def list_maintenance_daily(
+        self, metric_date: Optional[date] = None
+    ) -> List[MaintenanceSummary]: ...
+
+    @abstractmethod
+    def get_inventory_risk(self, part_id: str) -> Optional[InventoryRisk]: ...
+
+    @abstractmethod
+    def list_inventory_risks(
+        self, critical_only: bool = False
+    ) -> List[InventoryRisk]: ...
+
+    @abstractmethod
+    def get_production_context(
+        self, production_order_id: str
+    ) -> Optional[ProductionContext]: ...
+
+    @abstractmethod
+    def list_production_contexts(
+        self, machine_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[ProductionContext]: ...
+
+    @abstractmethod
+    def get_reliability_features(
+        self, machine_id: str, feature_date: Optional[date] = None
+    ) -> Optional[ReliabilityFeatures]: ...
+
+
+class KnowledgeSearchRepository(ABC):
+    """Canonical factory repository for failure mode taxonomy and corpus search."""
+
+    @abstractmethod
+    def get_document(self, document_id: str) -> Optional[KnowledgeDocument]: ...
+
+    @abstractmethod
+    def list_documents(
+        self, doc_type: Optional[str] = None, failure_code: Optional[str] = None
+    ) -> List[KnowledgeDocument]: ...
+
+    @abstractmethod
+    def search_corpus(
+        self, query: str, limit: int = 5, failure_code: Optional[str] = None
+    ) -> List[KnowledgeDocument]: ...
+
+    @abstractmethod
+    def get_failure_mode(self, failure_code: str) -> Optional[FailureModeTaxonomy]: ...
+
+    @abstractmethod
+    def list_failure_modes(
+        self, category: Optional[str] = None
+    ) -> List[FailureModeTaxonomy]: ...
 

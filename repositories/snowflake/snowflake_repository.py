@@ -9,7 +9,8 @@ Follows AGENT.md:
 from __future__ import annotations
 
 from typing import List, Optional
-from datetime import datetime
+from datetime import date, datetime
+import json
 
 from domain.enums import AlertStatus, ApprovalStatus, HealthStatus, MachineState, WorkOrderStatus, SensorType, Severity, FailureMode
 from domain.models import (
@@ -43,6 +44,15 @@ from domain.models import (
     SparePart,
     Supplier,
     WorkOrderPartUsage,
+    KnowledgeDocument,
+    FailureModeTaxonomy,
+    MachineHealthDaily,
+    MachineOEEDaily,
+    DowntimeSummary,
+    MaintenanceSummary,
+    InventoryRisk,
+    ProductionContext,
+    ReliabilityFeatures,
 )
 from repositories.base import (
     GovernanceRepository,
@@ -53,6 +63,8 @@ from repositories.base import (
     ReliabilityRepository,
     SupplyChainRepository,
     TelemetryRepository,
+    AnalyticsRepository,
+    KnowledgeSearchRepository,
 )
 from repositories.snowflake.connection import SnowflakeConnectionManager
 
@@ -66,6 +78,8 @@ class SnowflakeRepository(
     GovernanceRepository,
     KnowledgeRepository,
     SupplyChainRepository,
+    AnalyticsRepository,
+    KnowledgeSearchRepository,
 ):
     def __init__(self, connection_manager: Optional[SnowflakeConnectionManager] = None) -> None:
         self.conn_mgr = connection_manager or SnowflakeConnectionManager()
@@ -2103,6 +2117,782 @@ class SnowflakeRepository(
                     due_date=r[8],
                     priority=r[9],
                     status=r[10],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    # AnalyticsRepository implementations
+    def get_machine_health_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[MachineHealthDaily]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT machine_id, metric_date, machine_name, machine_type, line_id, line_name,
+                       reading_count, avg_vibration, max_vibration, avg_temperature, max_temperature,
+                       exceedance_count, downtime_minutes, breakdown_count, maintenance_count,
+                       open_alerts, latest_prediction_id, latest_failure_prob, latest_risk_level, health_status
+                FROM COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY
+                WHERE machine_id = %s
+            """
+            params = [machine_id]
+            if metric_date:
+                query += " AND metric_date = %s"
+                params.append(metric_date)
+            query += " ORDER BY metric_date DESC LIMIT 1"
+            cur.execute(query, tuple(params))
+            r = cur.fetchone()
+            if not r:
+                return None
+            return MachineHealthDaily(
+                machine_id=r[0],
+                metric_date=r[1],
+                machine_name=r[2],
+                machine_type=r[3],
+                line_id=r[4],
+                line_name=r[5],
+                reading_count=int(r[6] or 0),
+                avg_vibration=float(r[7]) if r[7] is not None else None,
+                max_vibration=float(r[8]) if r[8] is not None else None,
+                avg_temperature=float(r[9]) if r[9] is not None else None,
+                max_temperature=float(r[10]) if r[10] is not None else None,
+                exceedance_count=int(r[11] or 0),
+                downtime_minutes=float(r[12] or 0.0),
+                breakdown_count=int(r[13] or 0),
+                maintenance_count=int(r[14] or 0),
+                open_alerts=int(r[15] or 0),
+                latest_prediction_id=r[16],
+                latest_failure_prob=float(r[17]) if r[17] is not None else None,
+                latest_risk_level=r[18],
+                health_status=r[19] or "HEALTHY",
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_machine_health_daily(
+        self, metric_date: Optional[date] = None, line_id: Optional[str] = None
+    ) -> List[MachineHealthDaily]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT machine_id, metric_date, machine_name, machine_type, line_id, line_name,
+                       reading_count, avg_vibration, max_vibration, avg_temperature, max_temperature,
+                       exceedance_count, downtime_minutes, breakdown_count, maintenance_count,
+                       open_alerts, latest_prediction_id, latest_failure_prob, latest_risk_level, health_status
+                FROM COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY
+            """
+            conditions = []
+            params = []
+            if metric_date:
+                conditions.append("metric_date = %s")
+                params.append(metric_date)
+            if line_id:
+                conditions.append("line_id = %s")
+                params.append(line_id)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY metric_date DESC, machine_id ASC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                MachineHealthDaily(
+                    machine_id=r[0],
+                    metric_date=r[1],
+                    machine_name=r[2],
+                    machine_type=r[3],
+                    line_id=r[4],
+                    line_name=r[5],
+                    reading_count=int(r[6] or 0),
+                    avg_vibration=float(r[7]) if r[7] is not None else None,
+                    max_vibration=float(r[8]) if r[8] is not None else None,
+                    avg_temperature=float(r[9]) if r[9] is not None else None,
+                    max_temperature=float(r[10]) if r[10] is not None else None,
+                    exceedance_count=int(r[11] or 0),
+                    downtime_minutes=float(r[12] or 0.0),
+                    breakdown_count=int(r[13] or 0),
+                    maintenance_count=int(r[14] or 0),
+                    open_alerts=int(r[15] or 0),
+                    latest_prediction_id=r[16],
+                    latest_failure_prob=float(r[17]) if r[17] is not None else None,
+                    latest_risk_level=r[18],
+                    health_status=r[19] or "HEALTHY",
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_machine_oee_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[MachineOEEDaily]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT machine_id, metric_date, machine_name, line_id,
+                       planned_production_minutes, operating_minutes, unplanned_downtime_minutes,
+                       total_pieces, good_pieces, reject_pieces,
+                       availability, performance, quality, oee
+                FROM COCO_FACTORY.ANALYTICS.MACHINE_OEE_DAILY
+                WHERE machine_id = %s
+            """
+            params = [machine_id]
+            if metric_date:
+                query += " AND metric_date = %s"
+                params.append(metric_date)
+            query += " ORDER BY metric_date DESC LIMIT 1"
+            cur.execute(query, tuple(params))
+            r = cur.fetchone()
+            if not r:
+                return None
+            return MachineOEEDaily(
+                machine_id=r[0],
+                metric_date=r[1],
+                machine_name=r[2],
+                line_id=r[3],
+                planned_production_minutes=float(r[4] or 0.0),
+                operating_minutes=float(r[5] or 0.0),
+                unplanned_downtime_minutes=float(r[6] or 0.0),
+                total_pieces=int(r[7] or 0),
+                good_pieces=int(r[8] or 0),
+                reject_pieces=int(r[9] or 0),
+                availability=float(r[10] or 0.0),
+                performance=float(r[11] or 0.0),
+                quality=float(r[12] or 0.0),
+                oee=float(r[13] or 0.0),
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_machine_oee_daily(
+        self, metric_date: Optional[date] = None, line_id: Optional[str] = None
+    ) -> List[MachineOEEDaily]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT machine_id, metric_date, machine_name, line_id,
+                       planned_production_minutes, operating_minutes, unplanned_downtime_minutes,
+                       total_pieces, good_pieces, reject_pieces,
+                       availability, performance, quality, oee
+                FROM COCO_FACTORY.ANALYTICS.MACHINE_OEE_DAILY
+            """
+            conditions = []
+            params = []
+            if metric_date:
+                conditions.append("metric_date = %s")
+                params.append(metric_date)
+            if line_id:
+                conditions.append("line_id = %s")
+                params.append(line_id)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY metric_date DESC, machine_id ASC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                MachineOEEDaily(
+                    machine_id=r[0],
+                    metric_date=r[1],
+                    machine_name=r[2],
+                    line_id=r[3],
+                    planned_production_minutes=float(r[4] or 0.0),
+                    operating_minutes=float(r[5] or 0.0),
+                    unplanned_downtime_minutes=float(r[6] or 0.0),
+                    total_pieces=int(r[7] or 0),
+                    good_pieces=int(r[8] or 0),
+                    reject_pieces=int(r[9] or 0),
+                    availability=float(r[10] or 0.0),
+                    performance=float(r[11] or 0.0),
+                    quality=float(r[12] or 0.0),
+                    oee=float(r[13] or 0.0),
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_downtime_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[DowntimeSummary]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT machine_id, metric_date, machine_name, line_id,
+                       total_downtime_minutes, breakdown_minutes, changeover_minutes,
+                       minor_stop_minutes, no_material_minutes, no_operator_minutes,
+                       planned_maintenance_minutes, breakdown_event_count, total_event_count,
+                       top_reason_code, top_downtime_category
+                FROM COCO_FACTORY.ANALYTICS.DOWNTIME_DAILY
+                WHERE machine_id = %s
+            """
+            params = [machine_id]
+            if metric_date:
+                query += " AND metric_date = %s"
+                params.append(metric_date)
+            query += " ORDER BY metric_date DESC LIMIT 1"
+            cur.execute(query, tuple(params))
+            r = cur.fetchone()
+            if not r:
+                return None
+            return DowntimeSummary(
+                machine_id=r[0],
+                metric_date=r[1],
+                machine_name=r[2],
+                line_id=r[3],
+                total_downtime_minutes=float(r[4] or 0.0),
+                breakdown_minutes=float(r[5] or 0.0),
+                changeover_minutes=float(r[6] or 0.0),
+                minor_stop_minutes=float(r[7] or 0.0),
+                no_material_minutes=float(r[8] or 0.0),
+                no_operator_minutes=float(r[9] or 0.0),
+                planned_maintenance_minutes=float(r[10] or 0.0),
+                breakdown_event_count=int(r[11] or 0),
+                total_event_count=int(r[12] or 0),
+                top_reason_code=r[13],
+                top_downtime_category=r[14],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_downtime_daily(
+        self, metric_date: Optional[date] = None
+    ) -> List[DowntimeSummary]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT machine_id, metric_date, machine_name, line_id,
+                       total_downtime_minutes, breakdown_minutes, changeover_minutes,
+                       minor_stop_minutes, no_material_minutes, no_operator_minutes,
+                       planned_maintenance_minutes, breakdown_event_count, total_event_count,
+                       top_reason_code, top_downtime_category
+                FROM COCO_FACTORY.ANALYTICS.DOWNTIME_DAILY
+            """
+            params = []
+            if metric_date:
+                query += " WHERE metric_date = %s"
+                params.append(metric_date)
+            query += " ORDER BY metric_date DESC, machine_id ASC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                DowntimeSummary(
+                    machine_id=r[0],
+                    metric_date=r[1],
+                    machine_name=r[2],
+                    line_id=r[3],
+                    total_downtime_minutes=float(r[4] or 0.0),
+                    breakdown_minutes=float(r[5] or 0.0),
+                    changeover_minutes=float(r[6] or 0.0),
+                    minor_stop_minutes=float(r[7] or 0.0),
+                    no_material_minutes=float(r[8] or 0.0),
+                    no_operator_minutes=float(r[9] or 0.0),
+                    planned_maintenance_minutes=float(r[10] or 0.0),
+                    breakdown_event_count=int(r[11] or 0),
+                    total_event_count=int(r[12] or 0),
+                    top_reason_code=r[13],
+                    top_downtime_category=r[14],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_maintenance_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[MaintenanceSummary]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT machine_id, metric_date, machine_name, line_id,
+                       work_order_count, corrective_count, preventive_count, breakdown_count,
+                       total_labor_hours, total_parts_cost_inr, total_labor_cost_inr,
+                       total_maintenance_cost_inr, mean_time_to_repair_minutes
+                FROM COCO_FACTORY.ANALYTICS.MAINTENANCE_DAILY
+                WHERE machine_id = %s
+            """
+            params = [machine_id]
+            if metric_date:
+                query += " AND metric_date = %s"
+                params.append(metric_date)
+            query += " ORDER BY metric_date DESC LIMIT 1"
+            cur.execute(query, tuple(params))
+            r = cur.fetchone()
+            if not r:
+                return None
+            return MaintenanceSummary(
+                machine_id=r[0],
+                metric_date=r[1],
+                machine_name=r[2],
+                line_id=r[3],
+                work_order_count=int(r[4] or 0),
+                corrective_count=int(r[5] or 0),
+                preventive_count=int(r[6] or 0),
+                breakdown_count=int(r[7] or 0),
+                total_labor_hours=float(r[8] or 0.0),
+                total_parts_cost_inr=float(r[9] or 0.0),
+                total_labor_cost_inr=float(r[10] or 0.0),
+                total_maintenance_cost_inr=float(r[11] or 0.0),
+                mean_time_to_repair_minutes=float(r[12]) if r[12] is not None else None,
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_maintenance_daily(
+        self, metric_date: Optional[date] = None
+    ) -> List[MaintenanceSummary]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT machine_id, metric_date, machine_name, line_id,
+                       work_order_count, corrective_count, preventive_count, breakdown_count,
+                       total_labor_hours, total_parts_cost_inr, total_labor_cost_inr,
+                       total_maintenance_cost_inr, mean_time_to_repair_minutes
+                FROM COCO_FACTORY.ANALYTICS.MAINTENANCE_DAILY
+            """
+            params = []
+            if metric_date:
+                query += " WHERE metric_date = %s"
+                params.append(metric_date)
+            query += " ORDER BY metric_date DESC, machine_id ASC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                MaintenanceSummary(
+                    machine_id=r[0],
+                    metric_date=r[1],
+                    machine_name=r[2],
+                    line_id=r[3],
+                    work_order_count=int(r[4] or 0),
+                    corrective_count=int(r[5] or 0),
+                    preventive_count=int(r[6] or 0),
+                    breakdown_count=int(r[7] or 0),
+                    total_labor_hours=float(r[8] or 0.0),
+                    total_parts_cost_inr=float(r[9] or 0.0),
+                    total_labor_cost_inr=float(r[10] or 0.0),
+                    total_maintenance_cost_inr=float(r[11] or 0.0),
+                    mean_time_to_repair_minutes=float(r[12]) if r[12] is not None else None,
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_inventory_risk(self, part_id: str) -> Optional[InventoryRisk]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT part_id, part_name, part_category, compatible_model,
+                       stock_qty, reorder_level, reorder_qty, lead_time_days,
+                       supplier_id, supplier_name, open_po_count, open_po_qty,
+                       stock_status, is_critical_exposure
+                FROM COCO_FACTORY.ANALYTICS.INVENTORY_RISK
+                WHERE part_id = %s
+            """
+            cur.execute(query, (part_id,))
+            r = cur.fetchone()
+            if not r:
+                return None
+            return InventoryRisk(
+                part_id=r[0],
+                part_name=r[1],
+                part_category=r[2],
+                compatible_model=r[3],
+                stock_qty=int(r[4] or 0),
+                reorder_level=int(r[5] or 0),
+                reorder_qty=int(r[6] or 0),
+                lead_time_days=int(r[7] or 0),
+                supplier_id=r[8],
+                supplier_name=r[9],
+                open_po_count=int(r[10] or 0),
+                open_po_qty=int(r[11] or 0),
+                stock_status=r[12] or "HEALTHY",
+                is_critical_exposure=bool(r[13]),
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_inventory_risks(
+        self, critical_only: bool = False
+    ) -> List[InventoryRisk]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT part_id, part_name, part_category, compatible_model,
+                       stock_qty, reorder_level, reorder_qty, lead_time_days,
+                       supplier_id, supplier_name, open_po_count, open_po_qty,
+                       stock_status, is_critical_exposure
+                FROM COCO_FACTORY.ANALYTICS.INVENTORY_RISK
+            """
+            if critical_only:
+                query += " WHERE is_critical_exposure = TRUE"
+            query += " ORDER BY part_id ASC"
+            cur.execute(query)
+            rows = cur.fetchall()
+            return [
+                InventoryRisk(
+                    part_id=r[0],
+                    part_name=r[1],
+                    part_category=r[2],
+                    compatible_model=r[3],
+                    stock_qty=int(r[4] or 0),
+                    reorder_level=int(r[5] or 0),
+                    reorder_qty=int(r[6] or 0),
+                    lead_time_days=int(r[7] or 0),
+                    supplier_id=r[8],
+                    supplier_name=r[9],
+                    open_po_count=int(r[10] or 0),
+                    open_po_qty=int(r[11] or 0),
+                    stock_status=r[12] or "HEALTHY",
+                    is_critical_exposure=bool(r[13]),
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_production_context(
+        self, production_order_id: str
+    ) -> Optional[ProductionContext]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT production_order_id, machine_id, machine_name, line_id,
+                       product_id, product_name, customer, priority, status,
+                       planned_qty, produced_qty, progress_pct, due_date,
+                       days_until_due, is_overdue, unit_price_inr, order_value_inr,
+                       unfulfilled_revenue_exposure_inr
+                FROM COCO_FACTORY.ANALYTICS.PRODUCTION_CONTEXT
+                WHERE production_order_id = %s
+            """
+            cur.execute(query, (production_order_id,))
+            r = cur.fetchone()
+            if not r:
+                return None
+            return ProductionContext(
+                production_order_id=r[0],
+                machine_id=r[1],
+                machine_name=r[2],
+                line_id=r[3],
+                product_id=r[4],
+                product_name=r[5],
+                customer=r[6],
+                priority=r[7],
+                status=r[8],
+                planned_qty=int(r[9] or 0),
+                produced_qty=int(r[10] or 0),
+                progress_pct=float(r[11] or 0.0),
+                due_date=r[12],
+                days_until_due=int(r[13] or 0),
+                is_overdue=bool(r[14]),
+                unit_price_inr=float(r[15] or 0.0),
+                order_value_inr=float(r[16] or 0.0),
+                unfulfilled_revenue_exposure_inr=float(r[17] or 0.0),
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_production_contexts(
+        self, machine_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[ProductionContext]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT production_order_id, machine_id, machine_name, line_id,
+                       product_id, product_name, customer, priority, status,
+                       planned_qty, produced_qty, progress_pct, due_date,
+                       days_until_due, is_overdue, unit_price_inr, order_value_inr,
+                       unfulfilled_revenue_exposure_inr
+                FROM COCO_FACTORY.ANALYTICS.PRODUCTION_CONTEXT
+            """
+            conditions = []
+            params = []
+            if machine_id:
+                conditions.append("machine_id = %s")
+                params.append(machine_id)
+            if status:
+                conditions.append("status = %s")
+                params.append(status)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY due_date ASC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                ProductionContext(
+                    production_order_id=r[0],
+                    machine_id=r[1],
+                    machine_name=r[2],
+                    line_id=r[3],
+                    product_id=r[4],
+                    product_name=r[5],
+                    customer=r[6],
+                    priority=r[7],
+                    status=r[8],
+                    planned_qty=int(r[9] or 0),
+                    produced_qty=int(r[10] or 0),
+                    progress_pct=float(r[11] or 0.0),
+                    due_date=r[12],
+                    days_until_due=int(r[13] or 0),
+                    is_overdue=bool(r[14]),
+                    unit_price_inr=float(r[15] or 0.0),
+                    order_value_inr=float(r[16] or 0.0),
+                    unfulfilled_revenue_exposure_inr=float(r[17] or 0.0),
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_reliability_features(
+        self, machine_id: str, feature_date: Optional[date] = None
+    ) -> Optional[ReliabilityFeatures]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT machine_id, feature_date,
+                       vib_mean_7d, vib_max_7d, vib_std_7d, vib_rel30, vib_slope_7d,
+                       temp_mean_7d, temp_max_7d, temp_rel30,
+                       exceedance_ratio_7d, downtime_ratio_7d, unplanned_downtime_hours_7d,
+                       breakdown_count_30d, days_since_last_maint
+                FROM COCO_FACTORY.ML.V_MACHINE_FEATURE_DAILY
+                WHERE machine_id = %s
+            """
+            params = [machine_id]
+            if feature_date:
+                query += " AND feature_date = %s"
+                params.append(feature_date)
+            query += " ORDER BY feature_date DESC LIMIT 1"
+            cur.execute(query, tuple(params))
+            r = cur.fetchone()
+            if not r:
+                return None
+            return ReliabilityFeatures(
+                machine_id=r[0],
+                feature_date=r[1],
+                vib_mean_7d=float(r[2]) if r[2] is not None else None,
+                vib_max_7d=float(r[3]) if r[3] is not None else None,
+                vib_std_7d=float(r[4]) if r[4] is not None else None,
+                vib_rel30=float(r[5]) if r[5] is not None else None,
+                vib_slope_7d=float(r[6]) if r[6] is not None else None,
+                temp_mean_7d=float(r[7]) if r[7] is not None else None,
+                temp_max_7d=float(r[8]) if r[8] is not None else None,
+                temp_rel30=float(r[9]) if r[9] is not None else None,
+                exceedance_ratio_7d=float(r[10]) if r[10] is not None else None,
+                downtime_ratio_7d=float(r[11]) if r[11] is not None else None,
+                unplanned_downtime_hours_7d=float(r[12]) if r[12] is not None else None,
+                breakdown_count_30d=int(r[13] or 0),
+                days_since_last_maint=int(r[14]) if r[14] is not None else None,
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    # KnowledgeSearchRepository implementations
+    def get_document(self, document_id: str) -> Optional[KnowledgeDocument]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT doc_id, title, doc_type, failure_code, machine_type, component_type, content, metadata_json
+                FROM COCO_FACTORY.KNOWLEDGE.CORPUS
+                WHERE doc_id = %s
+            """
+            cur.execute(query, (document_id,))
+            r = cur.fetchone()
+            if not r:
+                return None
+            meta = {}
+            if r[7]:
+                try:
+                    meta = json.loads(r[7]) if isinstance(r[7], str) else r[7]
+                except Exception:
+                    meta = {}
+            return KnowledgeDocument(
+                document_id=r[0],
+                title=r[1],
+                doc_type=r[2],
+                failure_code=r[3],
+                model=r[4],
+                component_type=r[5],
+                content=r[6],
+                metadata=meta,
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_documents(
+        self, doc_type: Optional[str] = None, failure_code: Optional[str] = None
+    ) -> List[KnowledgeDocument]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT doc_id, title, doc_type, failure_code, machine_type, component_type, content, metadata_json
+                FROM COCO_FACTORY.KNOWLEDGE.CORPUS
+            """
+            conditions = []
+            params = []
+            if doc_type:
+                conditions.append("doc_type = %s")
+                params.append(doc_type)
+            if failure_code:
+                conditions.append("failure_code = %s")
+                params.append(failure_code)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY doc_id ASC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            docs = []
+            for r in rows:
+                meta = {}
+                if r[7]:
+                    try:
+                        meta = json.loads(r[7]) if isinstance(r[7], str) else r[7]
+                    except Exception:
+                        meta = {}
+                docs.append(
+                    KnowledgeDocument(
+                        document_id=r[0],
+                        title=r[1],
+                        doc_type=r[2],
+                        failure_code=r[3],
+                        model=r[4],
+                        component_type=r[5],
+                        content=r[6],
+                        metadata=meta,
+                    )
+                )
+            return docs
+        finally:
+            cur.close()
+            conn.close()
+
+    def search_corpus(
+        self, query: str, limit: int = 5, failure_code: Optional[str] = None
+    ) -> List[KnowledgeDocument]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            sql = """
+                SELECT doc_id, title, doc_type, failure_code, machine_type, component_type, content, metadata_json
+                FROM COCO_FACTORY.KNOWLEDGE.CORPUS
+                WHERE (title ILIKE %s OR content ILIKE %s)
+            """
+            search_param = f"%{query}%"
+            params = [search_param, search_param]
+            if failure_code:
+                sql += " AND failure_code = %s"
+                params.append(failure_code)
+            sql += f" LIMIT {int(limit)}"
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+            docs = []
+            for r in rows:
+                meta = {}
+                if r[7]:
+                    try:
+                        meta = json.loads(r[7]) if isinstance(r[7], str) else r[7]
+                    except Exception:
+                        meta = {}
+                docs.append(
+                    KnowledgeDocument(
+                        document_id=r[0],
+                        title=r[1],
+                        doc_type=r[2],
+                        failure_code=r[3],
+                        model=r[4],
+                        component_type=r[5],
+                        content=r[6],
+                        metadata=meta,
+                    )
+                )
+            return docs
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_failure_mode(self, failure_code: str) -> Optional[FailureModeTaxonomy]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT failure_code, name, category, component_type, symptoms, related_sensor_types, recommended_action_template
+                FROM COCO_FACTORY.KNOWLEDGE.FAILURE_MODE_TAXONOMY
+                WHERE failure_code = %s
+            """
+            cur.execute(query, (failure_code,))
+            r = cur.fetchone()
+            if not r:
+                return None
+            sensors = [s.strip() for s in (r[5] or "").split(",") if s.strip()]
+            return FailureModeTaxonomy(
+                failure_code=r[0],
+                failure_name=r[1],
+                category=r[2],
+                component_type=r[3],
+                typical_symptoms=r[4],
+                primary_sensors=sensors,
+                recommended_action=r[6],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_failure_modes(
+        self, category: Optional[str] = None
+    ) -> List[FailureModeTaxonomy]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT failure_code, name, category, component_type, symptoms, related_sensor_types, recommended_action_template
+                FROM COCO_FACTORY.KNOWLEDGE.FAILURE_MODE_TAXONOMY
+            """
+            params = []
+            if category:
+                query += " WHERE category = %s"
+                params.append(category)
+            query += " ORDER BY failure_code ASC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                FailureModeTaxonomy(
+                    failure_code=r[0],
+                    failure_name=r[1],
+                    category=r[2],
+                    component_type=r[3],
+                    typical_symptoms=r[4],
+                    primary_sensors=[s.strip() for s in (r[5] or "").split(",") if s.strip()],
+                    recommended_action=r[6],
                 )
                 for r in rows
             ]

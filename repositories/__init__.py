@@ -11,7 +11,10 @@ from repositories.base import (
     MachineRepository,
     MaintenanceRepository,
     ReliabilityRepository,
+    SupplyChainRepository,
     TelemetryRepository,
+    AnalyticsRepository,
+    KnowledgeSearchRepository,
 )
 from repositories.memory.memory_repository import InMemoryRepository
 from repositories.snowflake.connection import SnowflakeConnectionManager
@@ -59,6 +62,9 @@ __all__ = [
     "InvestigationRepository",
     "GovernanceRepository",
     "KnowledgeRepository",
+    "SupplyChainRepository",
+    "AnalyticsRepository",
+    "KnowledgeSearchRepository",
     "InMemoryRepository",
     "SnowflakeRepository",
     "SnowflakeConnectionManager",

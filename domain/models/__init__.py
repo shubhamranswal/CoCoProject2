@@ -8,7 +8,7 @@ from domain.models.maintenance import MaintenanceEvent, WorkOrder
 from domain.models.intelligence import Alert, Evidence, Hypothesis, Finding, Recommendation, Investigation, ActionProposal
 from domain.models.governance import Action, Approval, Verification, AuditEvent
 from domain.models.agent import AgentExecution, ToolCall
-from domain.models.knowledge import Document, KnowledgeChunk
+from domain.models.knowledge import Document, KnowledgeChunk, KnowledgeDocument, FailureModeTaxonomy
 from domain.models.freshness import DataFreshness
 from domain.models.lineage import DecisionLineage
 from domain.models.erp import (
@@ -19,6 +19,15 @@ from domain.models.erp import (
     PurchaseOrder,
     WorkOrderPartUsage,
     CanonicalPrediction,
+)
+from domain.models.analytics import (
+    MachineHealthDaily,
+    MachineOEEDaily,
+    DowntimeSummary,
+    MaintenanceSummary,
+    InventoryRisk,
+    ProductionContext,
+    ReliabilityFeatures,
 )
 
 __all__ = [
@@ -55,6 +64,8 @@ __all__ = [
     "ToolCall",
     "Document",
     "KnowledgeChunk",
+    "KnowledgeDocument",
+    "FailureModeTaxonomy",
     "DataFreshness",
     "DecisionLineage",
     "Product",
@@ -64,4 +75,11 @@ __all__ = [
     "PurchaseOrder",
     "WorkOrderPartUsage",
     "CanonicalPrediction",
+    "MachineHealthDaily",
+    "MachineOEEDaily",
+    "DowntimeSummary",
+    "MaintenanceSummary",
+    "InventoryRisk",
+    "ProductionContext",
+    "ReliabilityFeatures",
 ]

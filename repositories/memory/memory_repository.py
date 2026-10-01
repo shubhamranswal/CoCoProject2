@@ -9,8 +9,8 @@ Pre-seeded with Plant 01, Line A/B/C, 10 machines, and primary machine M204.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple
+from datetime import date, datetime, timezone
 import threading
 
 from domain.enums import AlertStatus, ApprovalStatus, HealthStatus, MachineState, WorkOrderStatus
@@ -45,6 +45,15 @@ from domain.models import (
     SparePart,
     Supplier,
     WorkOrderPartUsage,
+    KnowledgeDocument,
+    FailureModeTaxonomy,
+    MachineHealthDaily,
+    MachineOEEDaily,
+    DowntimeSummary,
+    MaintenanceSummary,
+    InventoryRisk,
+    ProductionContext,
+    ReliabilityFeatures,
 )
 from repositories.base import (
     GovernanceRepository,
@@ -55,6 +64,8 @@ from repositories.base import (
     ReliabilityRepository,
     SupplyChainRepository,
     TelemetryRepository,
+    AnalyticsRepository,
+    KnowledgeSearchRepository,
 )
 from data.generators.seed_data import (
     PLANT_01,
@@ -78,6 +89,15 @@ from data.generators.canonical_fixtures import (
     CANONICAL_PURCHASE_ORDERS,
     CANONICAL_PRODUCTION_ORDERS,
     CANONICAL_PREDICTIONS,
+    CANONICAL_FAILURE_MODES,
+    CANONICAL_KNOWLEDGE_DOCS,
+    CANONICAL_HEALTH_DAILY,
+    CANONICAL_OEE_DAILY,
+    CANONICAL_DOWNTIME_DAILY,
+    CANONICAL_MAINTENANCE_DAILY,
+    CANONICAL_INVENTORY_RISKS,
+    CANONICAL_PRODUCTION_CONTEXTS,
+    CANONICAL_RELIABILITY_FEATURES,
 )
 
 
@@ -98,6 +118,8 @@ class InMemoryRepository(
     GovernanceRepository,
     KnowledgeRepository,
     SupplyChainRepository,
+    AnalyticsRepository,
+    KnowledgeSearchRepository,
 ):
     def __init__(self, seed: bool = True) -> None:
         self._lock = threading.RLock()
@@ -128,6 +150,15 @@ class InMemoryRepository(
         self._purchase_orders: Dict[str, PurchaseOrder] = {}
         self._production_orders: Dict[str, ProductionOrder] = {}
         self._canonical_predictions: Dict[str, CanonicalPrediction] = {}
+        self._health_daily: Dict[Tuple[str, date], MachineHealthDaily] = {}
+        self._oee_daily: Dict[Tuple[str, date], MachineOEEDaily] = {}
+        self._downtime_daily: Dict[Tuple[str, date], DowntimeSummary] = {}
+        self._maintenance_daily: Dict[Tuple[str, date], MaintenanceSummary] = {}
+        self._inventory_risks: Dict[str, InventoryRisk] = {}
+        self._production_contexts: Dict[str, ProductionContext] = {}
+        self._reliability_features: Dict[Tuple[str, date], ReliabilityFeatures] = {}
+        self._knowledge_documents: Dict[str, KnowledgeDocument] = {}
+        self._failure_modes: Dict[str, FailureModeTaxonomy] = {}
 
         if seed:
             self._seed_reference_data()
@@ -209,6 +240,33 @@ class InMemoryRepository(
 
             for pred in CANONICAL_PREDICTIONS:
                 self._canonical_predictions[pred.prediction_id] = pred
+
+            for h in CANONICAL_HEALTH_DAILY:
+                self._health_daily[(h.machine_id, h.metric_date)] = h
+
+            for o in CANONICAL_OEE_DAILY:
+                self._oee_daily[(o.machine_id, o.metric_date)] = o
+
+            for d in CANONICAL_DOWNTIME_DAILY:
+                self._downtime_daily[(d.machine_id, d.metric_date)] = d
+
+            for m in CANONICAL_MAINTENANCE_DAILY:
+                self._maintenance_daily[(m.machine_id, m.metric_date)] = m
+
+            for ir in CANONICAL_INVENTORY_RISKS:
+                self._inventory_risks[ir.part_id] = ir
+
+            for pc in CANONICAL_PRODUCTION_CONTEXTS:
+                self._production_contexts[pc.production_order_id] = pc
+
+            for rf in CANONICAL_RELIABILITY_FEATURES:
+                self._reliability_features[(rf.machine_id, rf.feature_date)] = rf
+
+            for fm in CANONICAL_FAILURE_MODES:
+                self._failure_modes[fm.failure_code] = fm
+
+            for doc in CANONICAL_KNOWLEDGE_DOCS:
+                self._knowledge_documents[doc.document_id] = doc
 
     # MachineRepository implementations
     def get_plant(self, plant_id: str) -> Optional[Plant]:
@@ -662,4 +720,179 @@ class InMemoryRepository(
             if status:
                 orders = [o for o in orders if o.status == status]
             return sorted(orders, key=lambda o: o.due_date)
+
+    # AnalyticsRepository implementations
+    def get_machine_health_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[MachineHealthDaily]:
+        with self._lock:
+            if metric_date:
+                return self._health_daily.get((machine_id, metric_date))
+            matches = [h for (m, _), h in self._health_daily.items() if m == machine_id]
+            if matches:
+                return sorted(matches, key=lambda x: x.metric_date, reverse=True)[0]
+            return None
+
+    def list_machine_health_daily(
+        self, metric_date: Optional[date] = None, line_id: Optional[str] = None
+    ) -> List[MachineHealthDaily]:
+        with self._lock:
+            res = list(self._health_daily.values())
+            if metric_date:
+                res = [h for h in res if h.metric_date == metric_date]
+            if line_id:
+                res = [h for h in res if h.line_id == line_id]
+            return sorted(res, key=lambda h: (h.metric_date, h.machine_id), reverse=True)
+
+    def get_machine_oee_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[MachineOEEDaily]:
+        with self._lock:
+            if metric_date:
+                return self._oee_daily.get((machine_id, metric_date))
+            matches = [o for (m, _), o in self._oee_daily.items() if m == machine_id]
+            if matches:
+                return sorted(matches, key=lambda x: x.metric_date, reverse=True)[0]
+            return None
+
+    def list_machine_oee_daily(
+        self, metric_date: Optional[date] = None, line_id: Optional[str] = None
+    ) -> List[MachineOEEDaily]:
+        with self._lock:
+            res = list(self._oee_daily.values())
+            if metric_date:
+                res = [o for o in res if o.metric_date == metric_date]
+            if line_id:
+                res = [o for o in res if o.line_id == line_id]
+            return sorted(res, key=lambda o: (o.metric_date, o.machine_id), reverse=True)
+
+    def get_downtime_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[DowntimeSummary]:
+        with self._lock:
+            if metric_date:
+                return self._downtime_daily.get((machine_id, metric_date))
+            matches = [d for (m, _), d in self._downtime_daily.items() if m == machine_id]
+            if matches:
+                return sorted(matches, key=lambda x: x.metric_date, reverse=True)[0]
+            return None
+
+    def list_downtime_daily(
+        self, metric_date: Optional[date] = None
+    ) -> List[DowntimeSummary]:
+        with self._lock:
+            res = list(self._downtime_daily.values())
+            if metric_date:
+                res = [d for d in res if d.metric_date == metric_date]
+            return sorted(res, key=lambda d: (d.metric_date, d.machine_id), reverse=True)
+
+    def get_maintenance_daily(
+        self, machine_id: str, metric_date: Optional[date] = None
+    ) -> Optional[MaintenanceSummary]:
+        with self._lock:
+            if metric_date:
+                return self._maintenance_daily.get((machine_id, metric_date))
+            matches = [m for (mid, _), m in self._maintenance_daily.items() if mid == machine_id]
+            if matches:
+                return sorted(matches, key=lambda x: x.metric_date, reverse=True)[0]
+            return None
+
+    def list_maintenance_daily(
+        self, metric_date: Optional[date] = None
+    ) -> List[MaintenanceSummary]:
+        with self._lock:
+            res = list(self._maintenance_daily.values())
+            if metric_date:
+                res = [m for m in res if m.metric_date == metric_date]
+            return sorted(res, key=lambda m: (m.metric_date, m.machine_id), reverse=True)
+
+    def get_inventory_risk(self, part_id: str) -> Optional[InventoryRisk]:
+        with self._lock:
+            return self._inventory_risks.get(part_id)
+
+    def list_inventory_risks(
+        self, critical_only: bool = False
+    ) -> List[InventoryRisk]:
+        with self._lock:
+            res = list(self._inventory_risks.values())
+            if critical_only:
+                res = [r for r in res if r.is_critical_exposure]
+            return sorted(res, key=lambda r: r.part_id)
+
+    def get_production_context(
+        self, production_order_id: str
+    ) -> Optional[ProductionContext]:
+        with self._lock:
+            return self._production_contexts.get(production_order_id)
+
+    def list_production_contexts(
+        self, machine_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[ProductionContext]:
+        with self._lock:
+            res = list(self._production_contexts.values())
+            if machine_id:
+                res = [p for p in res if p.machine_id == machine_id]
+            if status:
+                res = [p for p in res if p.status == status]
+            return sorted(res, key=lambda p: p.due_date)
+
+    def get_reliability_features(
+        self, machine_id: str, feature_date: Optional[date] = None
+    ) -> Optional[ReliabilityFeatures]:
+        with self._lock:
+            if feature_date:
+                return self._reliability_features.get((machine_id, feature_date))
+            matches = [f for (m, _), f in self._reliability_features.items() if m == machine_id]
+            if matches:
+                return sorted(matches, key=lambda x: x.feature_date, reverse=True)[0]
+            return None
+
+    # KnowledgeSearchRepository implementations
+    def get_document(self, document_id: str) -> Optional[KnowledgeDocument]:
+        with self._lock:
+            return self._knowledge_documents.get(document_id)
+
+    def list_documents(
+        self, doc_type: Optional[str] = None, failure_code: Optional[str] = None
+    ) -> List[KnowledgeDocument]:
+        with self._lock:
+            docs = list(self._knowledge_documents.values())
+            if doc_type:
+                docs = [d for d in docs if d.doc_type == doc_type]
+            if failure_code:
+                docs = [d for d in docs if d.failure_code == failure_code]
+            return sorted(docs, key=lambda d: d.document_id)
+
+    def search_corpus(
+        self, query: str, limit: int = 5, failure_code: Optional[str] = None
+    ) -> List[KnowledgeDocument]:
+        with self._lock:
+            q_lower = query.lower()
+            tokens = [t for t in q_lower.replace(",", " ").replace(".", " ").split() if len(t) > 2]
+            scored: List[Tuple[int, KnowledgeDocument]] = []
+            for doc in self._knowledge_documents.values():
+                if failure_code and doc.failure_code != failure_code:
+                    continue
+                score = 0
+                searchable = f"{doc.title} {doc.content} {doc.component_type or ''} {doc.failure_code or ''}".lower()
+                for token in tokens:
+                    if token in searchable:
+                        score += 1
+                if score > 0:
+                    scored.append((score, doc))
+            scored.sort(key=lambda x: (x[0], x[1].document_id), reverse=True)
+            return [d for _, d in scored[:limit]]
+
+    def get_failure_mode(self, failure_code: str) -> Optional[FailureModeTaxonomy]:
+        with self._lock:
+            return self._failure_modes.get(failure_code)
+
+    def list_failure_modes(
+        self, category: Optional[str] = None
+    ) -> List[FailureModeTaxonomy]:
+        with self._lock:
+            modes = list(self._failure_modes.values())
+            if category:
+                modes = [m for m in modes if m.category == category]
+            return sorted(modes, key=lambda m: m.failure_code)
 
