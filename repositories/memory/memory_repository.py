@@ -38,6 +38,13 @@ from domain.models import (
     WorkOrder,
     MLFailurePrediction,
     PredictionOutcome,
+    CanonicalPrediction,
+    Product,
+    ProductionOrder,
+    PurchaseOrder,
+    SparePart,
+    Supplier,
+    WorkOrderPartUsage,
 )
 from repositories.base import (
     GovernanceRepository,
@@ -46,6 +53,7 @@ from repositories.base import (
     MachineRepository,
     MaintenanceRepository,
     ReliabilityRepository,
+    SupplyChainRepository,
     TelemetryRepository,
 )
 from data.generators.seed_data import (
@@ -58,6 +66,18 @@ from data.generators.seed_data import (
     M204_FAILURES,
     M204_MAINTENANCE_HISTORY,
     M204_MANUAL,
+)
+from data.generators.canonical_fixtures import (
+    CANONICAL_PLANT,
+    CANONICAL_LINES,
+    CANONICAL_MACHINES,
+    CANONICAL_COMPONENTS,
+    CANONICAL_SENSORS,
+    CANONICAL_SPARE_PARTS,
+    CANONICAL_SUPPLIERS,
+    CANONICAL_PURCHASE_ORDERS,
+    CANONICAL_PRODUCTION_ORDERS,
+    CANONICAL_PREDICTIONS,
 )
 
 
@@ -77,6 +97,7 @@ class InMemoryRepository(
     InvestigationRepository,
     GovernanceRepository,
     KnowledgeRepository,
+    SupplyChainRepository,
 ):
     def __init__(self, seed: bool = True) -> None:
         self._lock = threading.RLock()
@@ -102,12 +123,18 @@ class InMemoryRepository(
         self._verifications: Dict[str, Verification] = {}  # work_order_id -> Verification
         self._predictions: Dict[str, List[MLFailurePrediction]] = {}  # machine_id -> list
         self._prediction_outcomes: Dict[str, PredictionOutcome] = {}  # prediction_id -> outcome
+        self._spare_parts: Dict[str, SparePart] = {}
+        self._suppliers: Dict[str, Supplier] = {}
+        self._purchase_orders: Dict[str, PurchaseOrder] = {}
+        self._production_orders: Dict[str, ProductionOrder] = {}
+        self._canonical_predictions: Dict[str, CanonicalPrediction] = {}
 
         if seed:
             self._seed_reference_data()
 
     def _seed_reference_data(self) -> None:
         with self._lock:
+            # 1. Seed legacy M204 plant and machines (for regression baseline)
             self._plants[PLANT_01.plant_id] = PLANT_01
             for line in LINES:
                 self._lines[line.line_id] = line
@@ -138,6 +165,50 @@ class InMemoryRepository(
                 health_score=94.5,
                 primary_concern=None,
             )
+
+            # 2. Seed canonical 25-machine factory dataset & spotlight entities (M21, M15, M05)
+            self._plants[CANONICAL_PLANT.plant_id] = CANONICAL_PLANT
+            for line in CANONICAL_LINES:
+                self._lines[line.line_id] = line
+            for machine in CANONICAL_MACHINES:
+                self._machines[machine.machine_id] = machine
+                if machine.machine_id not in self._components:
+                    self._components[machine.machine_id] = []
+                if machine.machine_id not in self._sensors:
+                    self._sensors[machine.machine_id] = []
+                if machine.machine_id not in self._measurements:
+                    self._measurements[machine.machine_id] = []
+                if machine.machine_id not in self._features:
+                    self._features[machine.machine_id] = []
+                if machine.machine_id not in self._anomalies:
+                    self._anomalies[machine.machine_id] = []
+                if machine.machine_id not in self._failures:
+                    self._failures[machine.machine_id] = []
+                if machine.machine_id not in self._maintenance_events:
+                    self._maintenance_events[machine.machine_id] = []
+                if machine.machine_id not in self._failure_risks:
+                    self._failure_risks[machine.machine_id] = []
+
+            for comp in CANONICAL_COMPONENTS:
+                self._components[comp.machine_id].append(comp)
+
+            for sens in CANONICAL_SENSORS:
+                self._sensors[sens.machine_id].append(sens)
+
+            for part in CANONICAL_SPARE_PARTS:
+                self._spare_parts[part.part_id] = part
+
+            for sup in CANONICAL_SUPPLIERS:
+                self._suppliers[sup.supplier_id] = sup
+
+            for po in CANONICAL_PURCHASE_ORDERS:
+                self._purchase_orders[po.po_id] = po
+
+            for prd in CANONICAL_PRODUCTION_ORDERS:
+                self._production_orders[prd.production_order_id] = prd
+
+            for pred in CANONICAL_PREDICTIONS:
+                self._canonical_predictions[pred.prediction_id] = pred
 
     # MachineRepository implementations
     def get_plant(self, plant_id: str) -> Optional[Plant]:
@@ -519,3 +590,76 @@ class InMemoryRepository(
     def list_documents(self) -> List[Document]:
         with self._lock:
             return list(self._documents.values())
+
+    # Canonical Prediction implementations
+    def save_canonical_prediction(self, prediction: CanonicalPrediction) -> None:
+        with self._lock:
+            self._canonical_predictions[prediction.prediction_id] = prediction
+
+    def get_canonical_prediction(self, prediction_id: str) -> Optional[CanonicalPrediction]:
+        with self._lock:
+            return self._canonical_predictions.get(prediction_id)
+
+    def list_canonical_predictions(
+        self, machine_id: Optional[str] = None, limit: int = 50
+    ) -> List[CanonicalPrediction]:
+        with self._lock:
+            preds = list(self._canonical_predictions.values())
+            if machine_id:
+                preds = [p for p in preds if p.machine_id == machine_id]
+            return sorted(preds, key=lambda p: p.scored_ts, reverse=True)[:limit]
+
+    # SupplyChainRepository implementations
+    def get_spare_part(self, part_id: str) -> Optional[SparePart]:
+        with self._lock:
+            return self._spare_parts.get(part_id)
+
+    def list_spare_parts(
+        self, category: Optional[str] = None, supplier_id: Optional[str] = None
+    ) -> List[SparePart]:
+        with self._lock:
+            parts = list(self._spare_parts.values())
+            if category:
+                parts = [p for p in parts if p.part_category == category]
+            if supplier_id:
+                parts = [p for p in parts if p.supplier_id == supplier_id]
+            return sorted(parts, key=lambda p: p.part_id)
+
+    def get_supplier(self, supplier_id: str) -> Optional[Supplier]:
+        with self._lock:
+            return self._suppliers.get(supplier_id)
+
+    def list_suppliers(self) -> List[Supplier]:
+        with self._lock:
+            return sorted(list(self._suppliers.values()), key=lambda s: s.supplier_id)
+
+    def get_purchase_order(self, po_id: str) -> Optional[PurchaseOrder]:
+        with self._lock:
+            return self._purchase_orders.get(po_id)
+
+    def list_purchase_orders(
+        self, part_id: Optional[str] = None, supplier_id: Optional[str] = None
+    ) -> List[PurchaseOrder]:
+        with self._lock:
+            pos = list(self._purchase_orders.values())
+            if part_id:
+                pos = [p for p in pos if p.part_id == part_id]
+            if supplier_id:
+                pos = [p for p in pos if p.supplier_id == supplier_id]
+            return sorted(pos, key=lambda p: p.order_date, reverse=True)
+
+    def get_production_order(self, order_id: str) -> Optional[ProductionOrder]:
+        with self._lock:
+            return self._production_orders.get(order_id)
+
+    def list_production_orders(
+        self, machine_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[ProductionOrder]:
+        with self._lock:
+            orders = list(self._production_orders.values())
+            if machine_id:
+                orders = [o for o in orders if o.machine_id == machine_id]
+            if status:
+                orders = [o for o in orders if o.status == status]
+            return sorted(orders, key=lambda o: o.due_date)
+

@@ -35,6 +35,13 @@ from domain.models import (
     Document,
     MLFailurePrediction,
     PredictionOutcome,
+    CanonicalPrediction,
+    Product,
+    ProductionOrder,
+    PurchaseOrder,
+    SparePart,
+    Supplier,
+    WorkOrderPartUsage,
 )
 
 
@@ -154,6 +161,17 @@ class ReliabilityRepository(ABC):
         self, machine_id: Optional[str] = None
     ) -> List[PredictionOutcome]: ...
 
+    @abstractmethod
+    def save_canonical_prediction(self, prediction: CanonicalPrediction) -> None: ...
+
+    @abstractmethod
+    def get_canonical_prediction(self, prediction_id: str) -> Optional[CanonicalPrediction]: ...
+
+    @abstractmethod
+    def list_canonical_predictions(
+        self, machine_id: Optional[str] = None, limit: int = 50
+    ) -> List[CanonicalPrediction]: ...
+
 
 class InvestigationRepository(ABC):
     @abstractmethod
@@ -234,3 +252,38 @@ class KnowledgeRepository(ABC):
 
     @abstractmethod
     def list_documents(self) -> List[Document]: ...
+
+
+class SupplyChainRepository(ABC):
+    """Canonical factory repository for materials, suppliers, and customer orders."""
+
+    @abstractmethod
+    def get_spare_part(self, part_id: str) -> Optional[SparePart]: ...
+
+    @abstractmethod
+    def list_spare_parts(
+        self, category: Optional[str] = None, supplier_id: Optional[str] = None
+    ) -> List[SparePart]: ...
+
+    @abstractmethod
+    def get_supplier(self, supplier_id: str) -> Optional[Supplier]: ...
+
+    @abstractmethod
+    def list_suppliers(self) -> List[Supplier]: ...
+
+    @abstractmethod
+    def get_purchase_order(self, po_id: str) -> Optional[PurchaseOrder]: ...
+
+    @abstractmethod
+    def list_purchase_orders(
+        self, part_id: Optional[str] = None, supplier_id: Optional[str] = None
+    ) -> List[PurchaseOrder]: ...
+
+    @abstractmethod
+    def get_production_order(self, order_id: str) -> Optional[ProductionOrder]: ...
+
+    @abstractmethod
+    def list_production_orders(
+        self, machine_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[ProductionOrder]: ...
+

@@ -36,6 +36,13 @@ from domain.models import (
     TelemetryMeasurement,
     Verification,
     WorkOrder,
+    CanonicalPrediction,
+    Product,
+    ProductionOrder,
+    PurchaseOrder,
+    SparePart,
+    Supplier,
+    WorkOrderPartUsage,
 )
 from repositories.base import (
     GovernanceRepository,
@@ -44,6 +51,7 @@ from repositories.base import (
     MachineRepository,
     MaintenanceRepository,
     ReliabilityRepository,
+    SupplyChainRepository,
     TelemetryRepository,
 )
 from repositories.snowflake.connection import SnowflakeConnectionManager
@@ -57,6 +65,7 @@ class SnowflakeRepository(
     InvestigationRepository,
     GovernanceRepository,
     KnowledgeRepository,
+    SupplyChainRepository,
 ):
     def __init__(self, connection_manager: Optional[SnowflakeConnectionManager] = None) -> None:
         self.conn_mgr = connection_manager or SnowflakeConnectionManager()
@@ -1734,3 +1743,370 @@ class SnowflakeRepository(
         finally:
             cur.close()
             conn.close()
+
+    # Canonical Prediction implementations
+    def save_canonical_prediction(self, prediction: CanonicalPrediction) -> None:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO COCO_FACTORY.CORE.PREDICTION
+                (prediction_id, scored_ts, machine_id, suspected_component_id, model_name, horizon_days, failure_prob, risk_level, top_features)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    prediction.prediction_id,
+                    prediction.scored_ts,
+                    prediction.machine_id,
+                    prediction.suspected_component_id,
+                    prediction.model_name,
+                    prediction.horizon_days,
+                    prediction.failure_prob,
+                    prediction.risk_level,
+                    prediction.top_features,
+                ),
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_canonical_prediction(self, prediction_id: str) -> Optional[CanonicalPrediction]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT prediction_id, scored_ts, machine_id, suspected_component_id, model_name, horizon_days, failure_prob, risk_level, top_features
+                FROM COCO_FACTORY.CORE.PREDICTION WHERE prediction_id = %s
+                """,
+                (prediction_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return CanonicalPrediction(
+                prediction_id=r[0],
+                scored_ts=r[1],
+                machine_id=r[2],
+                suspected_component_id=r[3],
+                model_name=r[4],
+                horizon_days=r[5],
+                failure_prob=float(r[6]),
+                risk_level=r[7],
+                top_features=r[8],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_canonical_predictions(
+        self, machine_id: Optional[str] = None, limit: int = 50
+    ) -> List[CanonicalPrediction]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT prediction_id, scored_ts, machine_id, suspected_component_id, model_name, horizon_days, failure_prob, risk_level, top_features
+                FROM COCO_FACTORY.CORE.PREDICTION
+            """
+            params = []
+            if machine_id:
+                query += " WHERE machine_id = %s"
+                params.append(machine_id)
+            query += " ORDER BY scored_ts DESC LIMIT %s"
+            params.append(limit)
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
+            return [
+                CanonicalPrediction(
+                    prediction_id=r[0],
+                    scored_ts=r[1],
+                    machine_id=r[2],
+                    suspected_component_id=r[3],
+                    model_name=r[4],
+                    horizon_days=r[5],
+                    failure_prob=float(r[6]),
+                    risk_level=r[7],
+                    top_features=r[8],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    # SupplyChainRepository implementations
+    def get_spare_part(self, part_id: str) -> Optional[SparePart]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT part_id, part_name, part_category, compatible_model, unit_cost_inr, supplier_id, lead_time_days, stock_qty, reorder_level, reorder_qty, warehouse_bin
+                FROM COCO_FACTORY.CORE.SPARE_PART WHERE part_id = %s
+                """,
+                (part_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return SparePart(
+                part_id=r[0],
+                part_name=r[1],
+                part_category=r[2],
+                compatible_model=r[3],
+                unit_cost_inr=float(r[4]),
+                supplier_id=r[5],
+                lead_time_days=int(r[6]),
+                stock_qty=int(r[7]),
+                reorder_level=int(r[8]),
+                reorder_qty=int(r[9]),
+                warehouse_bin=r[10],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_spare_parts(
+        self, category: Optional[str] = None, supplier_id: Optional[str] = None
+    ) -> List[SparePart]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT part_id, part_name, part_category, compatible_model, unit_cost_inr, supplier_id, lead_time_days, stock_qty, reorder_level, reorder_qty, warehouse_bin
+                FROM COCO_FACTORY.CORE.SPARE_PART
+            """
+            conditions = []
+            params = []
+            if category:
+                conditions.append("part_category = %s")
+                params.append(category)
+            if supplier_id:
+                conditions.append("supplier_id = %s")
+                params.append(supplier_id)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY part_id"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                SparePart(
+                    part_id=r[0],
+                    part_name=r[1],
+                    part_category=r[2],
+                    compatible_model=r[3],
+                    unit_cost_inr=float(r[4]),
+                    supplier_id=r[5],
+                    lead_time_days=int(r[6]),
+                    stock_qty=int(r[7]),
+                    reorder_level=int(r[8]),
+                    reorder_qty=int(r[9]),
+                    warehouse_bin=r[10],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_supplier(self, supplier_id: str) -> Optional[Supplier]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT supplier_id, supplier_name, country, avg_lead_time_days, on_time_delivery_pct
+                FROM COCO_FACTORY.CORE.SUPPLIER WHERE supplier_id = %s
+                """,
+                (supplier_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return Supplier(
+                supplier_id=r[0],
+                supplier_name=r[1],
+                country=r[2],
+                avg_lead_time_days=int(r[3]),
+                on_time_delivery_pct=float(r[4]),
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_suppliers(self) -> List[Supplier]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT supplier_id, supplier_name, country, avg_lead_time_days, on_time_delivery_pct
+                FROM COCO_FACTORY.CORE.SUPPLIER ORDER BY supplier_id
+                """
+            )
+            rows = cur.fetchall()
+            return [
+                Supplier(
+                    supplier_id=r[0],
+                    supplier_name=r[1],
+                    country=r[2],
+                    avg_lead_time_days=int(r[3]),
+                    on_time_delivery_pct=float(r[4]),
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_purchase_order(self, po_id: str) -> Optional[PurchaseOrder]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT po_id, supplier_id, part_id, qty, unit_cost_inr, order_date, expected_delivery_date, actual_delivery_date, status, order_type, linked_wo_id
+                FROM COCO_FACTORY.CORE.PURCHASE_ORDER WHERE po_id = %s
+                """,
+                (po_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return PurchaseOrder(
+                po_id=r[0],
+                supplier_id=r[1],
+                part_id=r[2],
+                qty=int(r[3]),
+                unit_cost_inr=float(r[4]),
+                order_date=r[5],
+                expected_delivery_date=r[6],
+                actual_delivery_date=r[7],
+                status=r[8],
+                order_type=r[9],
+                linked_wo_id=r[10],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_purchase_orders(
+        self, part_id: Optional[str] = None, supplier_id: Optional[str] = None
+    ) -> List[PurchaseOrder]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT po_id, supplier_id, part_id, qty, unit_cost_inr, order_date, expected_delivery_date, actual_delivery_date, status, order_type, linked_wo_id
+                FROM COCO_FACTORY.CORE.PURCHASE_ORDER
+            """
+            conditions = []
+            params = []
+            if part_id:
+                conditions.append("part_id = %s")
+                params.append(part_id)
+            if supplier_id:
+                conditions.append("supplier_id = %s")
+                params.append(supplier_id)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY order_date DESC"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                PurchaseOrder(
+                    po_id=r[0],
+                    supplier_id=r[1],
+                    part_id=r[2],
+                    qty=int(r[3]),
+                    unit_cost_inr=float(r[4]),
+                    order_date=r[5],
+                    expected_delivery_date=r[6],
+                    actual_delivery_date=r[7],
+                    status=r[8],
+                    order_type=r[9],
+                    linked_wo_id=r[10],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_production_order(self, order_id: str) -> Optional[ProductionOrder]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT production_order_id, machine_id, product_id, customer, planned_qty, produced_qty, planned_start, planned_end, due_date, priority, status
+                FROM COCO_FACTORY.CORE.PRODUCTION_ORDER WHERE production_order_id = %s
+                """,
+                (order_id,),
+            )
+            r = cur.fetchone()
+            if not r:
+                return None
+            return ProductionOrder(
+                production_order_id=r[0],
+                machine_id=r[1],
+                product_id=r[2],
+                customer=r[3],
+                planned_qty=int(r[4]),
+                produced_qty=int(r[5]),
+                planned_start=r[6],
+                planned_end=r[7],
+                due_date=r[8],
+                priority=r[9],
+                status=r[10],
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_production_orders(
+        self, machine_id: Optional[str] = None, status: Optional[str] = None
+    ) -> List[ProductionOrder]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT production_order_id, machine_id, product_id, customer, planned_qty, produced_qty, planned_start, planned_end, due_date, priority, status
+                FROM COCO_FACTORY.CORE.PRODUCTION_ORDER
+            """
+            conditions = []
+            params = []
+            if machine_id:
+                conditions.append("machine_id = %s")
+                params.append(machine_id)
+            if status:
+                conditions.append("status = %s")
+                params.append(status)
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+            query += " ORDER BY due_date"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            return [
+                ProductionOrder(
+                    production_order_id=r[0],
+                    machine_id=r[1],
+                    product_id=r[2],
+                    customer=r[3],
+                    planned_qty=int(r[4]),
+                    produced_qty=int(r[5]),
+                    planned_start=r[6],
+                    planned_end=r[7],
+                    due_date=r[8],
+                    priority=r[9],
+                    status=r[10],
+                )
+                for r in rows
+            ]
+        finally:
+            cur.close()
+            conn.close()
+

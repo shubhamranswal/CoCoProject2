@@ -1,0 +1,128 @@
+-- 90_data_quality.sql
+-- Automated Data Quality Verification Suite for COCO_FACTORY
+
+USE DATABASE COCO_FACTORY;
+USE SCHEMA CORE;
+
+-- 1. Table Row Counts & Primary Key Null Checks
+SELECT 'MACHINE' AS table_name, COUNT(*) AS row_count, COUNT(CASE WHEN machine_id IS NULL THEN 1 END) AS null_pk_count FROM CORE.MACHINE
+UNION ALL
+SELECT 'COMPONENT', COUNT(*), COUNT(CASE WHEN component_id IS NULL THEN 1 END) FROM CORE.COMPONENT
+UNION ALL
+SELECT 'SENSOR', COUNT(*), COUNT(CASE WHEN sensor_id IS NULL THEN 1 END) FROM CORE.SENSOR
+UNION ALL
+SELECT 'TECHNICIAN', COUNT(*), COUNT(CASE WHEN technician_id IS NULL THEN 1 END) FROM CORE.TECHNICIAN
+UNION ALL
+SELECT 'PRODUCT', COUNT(*), COUNT(CASE WHEN product_id IS NULL THEN 1 END) FROM CORE.PRODUCT
+UNION ALL
+SELECT 'SUPPLIER', COUNT(*), COUNT(CASE WHEN supplier_id IS NULL THEN 1 END) FROM CORE.SUPPLIER
+UNION ALL
+SELECT 'SPARE_PART', COUNT(*), COUNT(CASE WHEN part_id IS NULL THEN 1 END) FROM CORE.SPARE_PART
+UNION ALL
+SELECT 'PURCHASE_ORDER', COUNT(*), COUNT(CASE WHEN po_id IS NULL THEN 1 END) FROM CORE.PURCHASE_ORDER
+UNION ALL
+SELECT 'PRODUCTION_ORDER', COUNT(*), COUNT(CASE WHEN production_order_id IS NULL THEN 1 END) FROM CORE.PRODUCTION_ORDER
+UNION ALL
+SELECT 'PRODUCTION_RUN', COUNT(*), COUNT(CASE WHEN run_id IS NULL THEN 1 END) FROM CORE.PRODUCTION_RUN
+UNION ALL
+SELECT 'MAINTENANCE_WORK_ORDER', COUNT(*), COUNT(CASE WHEN wo_id IS NULL THEN 1 END) FROM CORE.MAINTENANCE_WORK_ORDER
+UNION ALL
+SELECT 'DOWNTIME_EVENT', COUNT(*), COUNT(CASE WHEN event_id IS NULL THEN 1 END) FROM CORE.DOWNTIME_EVENT
+UNION ALL
+SELECT 'MAINTENANCE_LOG', COUNT(*), COUNT(CASE WHEN log_id IS NULL THEN 1 END) FROM CORE.MAINTENANCE_LOG
+UNION ALL
+SELECT 'WO_PART_USAGE', COUNT(*), 0 FROM CORE.WO_PART_USAGE
+UNION ALL
+SELECT 'ALERT', COUNT(*), COUNT(CASE WHEN alert_id IS NULL THEN 1 END) FROM CORE.ALERT
+UNION ALL
+SELECT 'PREDICTION', COUNT(*), COUNT(CASE WHEN prediction_id IS NULL THEN 1 END) FROM CORE.PREDICTION
+UNION ALL
+SELECT 'KNOWLEDGE_DOC', COUNT(*), COUNT(CASE WHEN doc_id IS NULL THEN 1 END) FROM CORE.KNOWLEDGE_DOC
+UNION ALL
+SELECT 'SENSOR_READING_HOURLY', COUNT(*), COUNT(CASE WHEN sensor_id IS NULL OR ts IS NULL THEN 1 END) FROM CORE.SENSOR_READING_HOURLY;
+
+-- 2. Referential Integrity Checks (Should all return 0)
+-- 2a. Components with invalid Machine ID
+SELECT 'ORPHAN_COMPONENT' AS check_name, COUNT(*) AS violations
+FROM CORE.COMPONENT c
+LEFT JOIN CORE.MACHINE m ON c.machine_id = m.machine_id
+WHERE m.machine_id IS NULL;
+
+-- 2b. Sensors with invalid Machine ID or Component ID
+SELECT 'ORPHAN_SENSOR_MACHINE' AS check_name, COUNT(*) AS violations
+FROM CORE.SENSOR s
+LEFT JOIN CORE.MACHINE m ON s.machine_id = m.machine_id
+WHERE m.machine_id IS NULL;
+
+SELECT 'ORPHAN_SENSOR_COMPONENT' AS check_name, COUNT(*) AS violations
+FROM CORE.SENSOR s
+LEFT JOIN CORE.COMPONENT c ON s.component_id = c.component_id
+WHERE s.component_id IS NOT NULL AND c.component_id IS NULL;
+
+-- 2c. Work Orders with invalid Machine ID
+SELECT 'ORPHAN_WO_MACHINE' AS check_name, COUNT(*) AS violations
+FROM CORE.MAINTENANCE_WORK_ORDER w
+LEFT JOIN CORE.MACHINE m ON w.machine_id = m.machine_id
+WHERE m.machine_id IS NULL;
+
+-- 2d. Spare Parts with invalid Supplier ID
+SELECT 'ORPHAN_PART_SUPPLIER' AS check_name, COUNT(*) AS violations
+FROM CORE.SPARE_PART p
+LEFT JOIN CORE.SUPPLIER s ON p.supplier_id = s.supplier_id
+WHERE p.supplier_id IS NOT NULL AND s.supplier_id IS NULL;
+
+-- 2e. Purchase Orders with invalid Part ID
+SELECT 'ORPHAN_PO_PART' AS check_name, COUNT(*) AS violations
+FROM CORE.PURCHASE_ORDER po
+LEFT JOIN CORE.SPARE_PART p ON po.part_id = p.part_id
+WHERE p.part_id IS NULL;
+
+-- 3. Domain & Temporal Sanity Checks (Should all return 0)
+SELECT 'INVALID_STOCK_QTY' AS check_name, COUNT(*) AS violations
+FROM CORE.SPARE_PART
+WHERE stock_qty < 0;
+
+SELECT 'INVALID_RUN_FRACTION' AS check_name, COUNT(*) AS violations
+FROM CORE.SENSOR_READING_HOURLY
+WHERE run_fraction < 0.0 OR run_fraction > 1.0;
+
+SELECT 'NEGATIVE_DOWNTIME' AS check_name, COUNT(*) AS violations
+FROM CORE.DOWNTIME_EVENT
+WHERE duration_min < 0;
+
+-- 4. Canonical Scenario M21 Verification Checks
+-- 4a. M21 Identity
+SELECT 'M21_IDENTITY' AS check_name,
+       COUNT(*) = 1 AND MAX(machine_name) = 'Grinder 3' AND MAX(line_id) = 'L5' AS passes
+FROM CORE.MACHINE
+WHERE machine_id = 'M21';
+
+-- 4b. M21 Bearing Component
+SELECT 'M21_BEARING_COMPONENT' AS check_name,
+       COUNT(*) = 1 AND MAX(model) = '6206-2RS' AS passes
+FROM CORE.COMPONENT
+WHERE component_id = 'C-M21-BRG';
+
+-- 4c. M21 Vibration & Temperature Sensors
+SELECT 'M21_SENSORS' AS check_name,
+       COUNT(*) = 2 AS passes
+FROM CORE.SENSOR
+WHERE sensor_id IN ('S-M21-VIB', 'S-M21-BTMP');
+
+-- 4d. SP-002 Stockout
+SELECT 'SP002_STOCKOUT' AS check_name,
+       COUNT(*) = 1 AND MAX(stock_qty) = 0 AS passes
+FROM CORE.SPARE_PART
+WHERE part_id = 'SP-002';
+
+-- 4e. PRD-01278 Keystone Hydraulics Production Order
+SELECT 'PRD01278_KEYSTONE' AS check_name,
+       COUNT(*) = 1 AND MAX(customer) = 'Keystone Hydraulics' AS passes
+FROM CORE.PRODUCTION_ORDER
+WHERE production_order_id = 'PRD-01278';
+
+-- 4f. PRED-000322 0.95 Degradation Score
+SELECT 'PRED000322_M21_SCORE' AS check_name,
+       COUNT(*) = 1 AND MAX(failure_prob) >= 0.90 AS passes
+FROM CORE.PREDICTION
+WHERE prediction_id = 'PRED-000322';

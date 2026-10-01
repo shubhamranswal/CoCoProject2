@@ -11,6 +11,15 @@ from domain.models.agent import AgentExecution, ToolCall
 from domain.models.knowledge import Document, KnowledgeChunk
 from domain.models.freshness import DataFreshness
 from domain.models.lineage import DecisionLineage
+from domain.models.erp import (
+    Product,
+    ProductionOrder,
+    SparePart,
+    Supplier,
+    PurchaseOrder,
+    WorkOrderPartUsage,
+    CanonicalPrediction,
+)
 
 __all__ = [
     "Plant",
@@ -48,4 +57,11 @@ __all__ = [
     "KnowledgeChunk",
     "DataFreshness",
     "DecisionLineage",
+    "Product",
+    "ProductionOrder",
+    "SparePart",
+    "Supplier",
+    "PurchaseOrder",
+    "WorkOrderPartUsage",
+    "CanonicalPrediction",
 ]

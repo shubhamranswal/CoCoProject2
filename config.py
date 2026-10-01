@@ -23,9 +23,12 @@ class SnowflakeConfig:
     user: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_USER", ""))
     password: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_PASSWORD", ""))
     warehouse: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"))
-    database: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_DATABASE", "FACTORY_RELIABILITY_DEV"))
-    schema: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_SCHEMA", "FACTORY_CORE"))
+    database: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_DATABASE", "COCO_FACTORY"))
+    schema: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_SCHEMA", "CORE"))
     role: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_ROLE", "RELIABILITY_ENGINEER"))
+    canonical_source_root: str = field(
+        default_factory=lambda: os.getenv("COCO_FACTORY_SOURCE_ROOT", r"C:\Users\shubh\Desktop\oee_v2")
+    )
 
     @property
     def is_configured(self) -> bool:
@@ -87,3 +90,6 @@ class AppConfig:
 def get_config() -> AppConfig:
     """Return active application configuration instance."""
     return AppConfig()
+
+
+get_settings = get_config
