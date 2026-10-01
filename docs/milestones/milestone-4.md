@@ -170,15 +170,25 @@ The end-to-end acceptance test (`test_m21_investigation_scenario.py`) validates 
 ## 8. Verification Results
 
 ```bash
-# 1. Full Pytest Suite
+# 1. Full Pytest Suite (214 total test cases)
 python -m pytest
-# Result: 212 passed, 1 skipped in 29.42s
+# Result: 213 passed, 1 skipped in 29.24s
 
 # 2. Syntax & Compilation Check
 python -m compileall .
-# Result: All files compiled successfully with zero syntax errors
+# Result: All packages and files compiled successfully with zero syntax errors
 
 # 3. Snowflake DDL Dry Run Validation
 python snowflake/scripts/init_coco_factory.py --dry-run
 # Result: 10 scripts, 92 statements successfully parsed and validated
 ```
+
+---
+
+## 9. Checkpoint & Governance Declarations
+
+* **Milestone 4 Status:** **PASS**
+* **Test Suite Metrics:** 213 passed, 1 skipped (214 collected). The single skipped test (`test_snowflake_live_path.py::test_snowflake_live_query_execution`) is intentional when running without active Snowflake cloud credentials.
+* **Live Cortex Runtime Verification:** **PENDING LIVE SNOWFLAKE CREDENTIALS**. The `LiveCortexCoCoAdapter` boundary and prompt contract are fully implemented with explicit provenance tracking (`"execution_mode": "LIVE_CORTEX"` vs. `"DETERMINISTIC_FALLBACK"`). Live cloud query execution will be validated upon deployment into an authenticated Snowflake environment.
+* **No Actions Executed:** Milestone 4 is strictly read-only (`ToolMode.READ`). Zero work orders were created, zero approvals were executed, zero parts were ordered, zero inventory quantities were modified, and zero machine operational states were altered. All recommendations are strictly `ADVISORY`.
+* **No Arbitrary SQL Exposed:** Unrestricted query capabilities (`execute_sql`, `run_query`, `raw_sql`) are strictly prohibited and firewalled. CoCo interacts exclusively through typed, business-level read tools with bounded schemas and input parameters.
