@@ -52,7 +52,7 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
         )
 
     with col2:
-        total_downtime = sum(e.downtime_minutes for e in all_events)
+        total_downtime = sum((e.duration_hours or 0.0) * 60.0 for e in all_events)
         st.markdown(
             f"""
             <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
@@ -65,7 +65,7 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
         )
 
     with col3:
-        total_cost = sum(e.cost for e in all_events if e.cost)
+        total_cost = sum((e.duration_hours or 0.0) * 85.0 for e in all_events)
         st.markdown(
             f"""
             <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
@@ -105,19 +105,20 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
         st.info("No completed maintenance events logged yet.")
     else:
         rows = []
-        for e in sorted(all_events, key=lambda x: x.end_time or x.start_time, reverse=True):
+        for e in sorted(all_events, key=lambda x: x.performed_at, reverse=True):
             rows.append({
-                "Event ID": e.event_id,
+                "Maintenance ID": e.maintenance_id,
                 "Machine ID": e.machine_id,
-                "Type": e.event_type.value,
-                "Description": e.description,
-                "Technician": e.performed_by,
-                "Downtime": f"{e.downtime_minutes:.0f} min",
-                "Cost": f"${e.cost:.2f}" if e.cost else "$0.00",
+                "Type": e.maintenance_type,
+                "Description": e.notes or e.findings or "Routine Maintenance",
+                "Technician": e.technician_name,
+                "Duration": f"{(e.duration_hours or 0.0) * 60:.0f} min",
+                "Cost": f"${(e.duration_hours or 0.0) * 85:.2f}",
                 "Work Order": e.work_order_id or "N/A",
-                "Date": (e.end_time or e.start_time).strftime("%Y-%m-%d %H:%M UTC"),
+                "Date": e.performed_at.strftime("%Y-%m-%d %H:%M UTC"),
             })
         st.dataframe(rows, use_container_width=True, hide_index=True)
+
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 18px 0;'/>", unsafe_allow_html=True)
 

@@ -137,9 +137,10 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
                 "Audit ID": a.audit_id,
                 "Timestamp": a.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "Actor": a.actor,
-                "Action": a.action,
-                "Entity Type": a.entity_type,
-                "Entity ID": a.entity_id,
+                "Action": getattr(a, "action_type", getattr(a, "action", "")),
+                "Entity Type": getattr(a, "resource_type", getattr(a, "entity_type", "")),
+                "Entity ID": getattr(a, "resource_id", getattr(a, "entity_id", "")),
                 "Details": json.dumps(a.details or {})[:80],
             })
         st.dataframe(audit_rows, use_container_width=True, hide_index=True)
+

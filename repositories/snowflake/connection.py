@@ -91,6 +91,8 @@ class SnowflakeConnectionManager:
                 database=self.config.database,
                 schema=self.config.schema,
                 role=self.config.role,
+                login_timeout=15,
+                network_timeout=30,
             )
         except ImportError:
             raise RuntimeError("snowflake-connector-python must be installed to connect to Snowflake.")

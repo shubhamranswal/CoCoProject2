@@ -64,7 +64,9 @@ class LineageService:
             wos = self.repo.list_work_orders(machine_id=machine_id)
             if wos:
                 wo_id = wos[0].work_order_id
-                app_id = wos[0].approval_id
+                app_id = getattr(wos[0], "source_approval_id", getattr(wos[0], "approval_id", None))
+
+
 
         if not app_id:
             apps = self.repo.list_approvals(machine_id=machine_id)

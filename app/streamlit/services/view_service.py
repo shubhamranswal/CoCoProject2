@@ -102,7 +102,8 @@ class CommandCenterFacade:
         self.scenario_engine = M204ScenarioEngine(machine_id="M204")
 
         # Auto-initialize baseline M204 alert in demo mode if unseeded
-        self._ensure_initial_state()
+        if self.backend_mode == "in_memory":
+            self._ensure_initial_state()
 
     def _ensure_initial_state(self) -> None:
         """Seed M204 active degradation state on startup so the UI renders the hero alert immediately."""

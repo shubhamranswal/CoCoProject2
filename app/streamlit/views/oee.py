@@ -35,8 +35,7 @@ def render_oee_view(facade: CommandCenterFacade) -> None:
     )
 
     kpis = facade.get_kpis()
-    now = datetime.now(timezone.utc)
-    m204_oee = facade.oee_service.calculate_oee("M204", now - timedelta(hours=8), now)
+    m204_oee = facade.calculate_machine_oee("M204")
 
     # 1. Top Level Metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -123,7 +122,7 @@ def render_oee_view(facade: CommandCenterFacade) -> None:
                         <span style="background: #ef444422; color: #ef4444; border: 1px solid #ef444455; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;">DEGRADED OEE</span>
                     </div>
                     <div style="font-size: 13px; color: #cbd5e1; margin-bottom: 12px; line-height: 1.5;">
-                        Due to drive-end bearing mechanical defect and elevated friction temperature (72°C), M204 is suffering from micro-stops and an unplanned downtime loss of <b>{m204_oee.unplanned_downtime_minutes:.0f} minutes</b>.
+                        Due to drive-end bearing mechanical defect and elevated friction temperature (72°C), M204 is suffering from micro-stops and an unplanned downtime loss of <b>{m204_oee.downtime_minutes:.0f} minutes</b>.
                     </div>
                     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
                         <div style="background: #0a0d14; padding: 8px; border-radius: 4px; border: 1px solid #1f2430;">
@@ -140,7 +139,7 @@ def render_oee_view(facade: CommandCenterFacade) -> None:
                         </div>
                         <div style="background: #0a0d14; padding: 8px; border-radius: 4px; border: 1px solid #1f2430;">
                             <div style="font-size: 10px; color: #94a3b8;">LOST PRODUCTION</div>
-                            <div style="font-size: 16px; font-weight: 800; color: #ef4444;">{m204_oee.unplanned_downtime_minutes*14:.0f} units</div>
+                            <div style="font-size: 16px; font-weight: 800; color: #ef4444;">{m204_oee.downtime_minutes*14:.0f} units</div>
                         </div>
                     </div>
                 </div>
@@ -183,13 +182,13 @@ def render_oee_view(facade: CommandCenterFacade) -> None:
         if m.machine_id == "M204" and m204_oee:
             asset_oee = m204_oee
         else:
-            asset_oee = facade.oee_service.calculate_oee(m.machine_id, now - timedelta(hours=8), now)
+            asset_oee = facade.calculate_machine_oee(m.machine_id)
 
         oee_pct = f"{asset_oee.oee * 100:.1f}%" if asset_oee else "--"
         avail_pct = f"{asset_oee.availability * 100:.1f}%" if asset_oee else "--"
         perf_pct = f"{asset_oee.performance * 100:.1f}%" if asset_oee else "--"
         qual_pct = f"{asset_oee.quality * 100:.1f}%" if asset_oee else "--"
-        dt_min = f"{asset_oee.unplanned_downtime_minutes:.0f} min" if asset_oee else "--"
+        dt_min = f"{asset_oee.downtime_minutes:.0f} min" if asset_oee else "--"
 
         status_badge = (
             "🔴 CRITICAL" if m.health_status == HealthStatus.CRITICAL

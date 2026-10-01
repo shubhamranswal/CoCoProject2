@@ -20,4 +20,8 @@ if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
 # Import and run main application
-from app.streamlit.app import *  # noqa: F401, F403
+from app.streamlit.app import main
+
+if __name__ == "__main__":
+    main()
+
