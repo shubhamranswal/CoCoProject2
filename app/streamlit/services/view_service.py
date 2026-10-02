@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 
-from agents.reliability.agent import ReliabilityInvestigationAgent, ReliabilityInvestigationResult
 from config import get_config
 from data.scenarios.m204_scenario import M204ScenarioEngine, ScenarioPhase
 from domain.enums import (
@@ -25,6 +24,7 @@ from domain.enums import (
     InvestigationStatus,
     MachineState,
     Priority,
+    TriggerType,
     VerificationStatus,
     WorkOrderStatus,
 )
@@ -35,6 +35,8 @@ from domain.models import (
     DataFreshness,
     DecisionLineage,
     Investigation,
+    InvestigationRequest,
+    InvestigationResult,
     Machine,
     MaintenanceEvent,
     MLFailurePrediction,
@@ -42,6 +44,9 @@ from domain.models import (
     Verification,
     WorkOrder,
 )
+from services.investigation_service import InvestigationService
+from tools.registry import M4InvestigationToolRegistry, create_m4_tool_registry
+from agents.reliability.coco_adapter import LiveCortexCoCoAdapter, DeterministicCoCoAdapter
 from repositories.snowflake.connection import SnowflakeConnectionManager, SnowflakeHealthStatus
 from ml.features.predictive_features import extract_predictive_features
 from ml.models.failure_predictor import BearingFailurePredictor
@@ -90,9 +95,17 @@ class CommandCenterFacade:
             investigation_repo=self.repo,
             machine_repo=self.repo,
         )
-        self.agent = ReliabilityInvestigationAgent(
+        # Canonical M4/M6 Investigation Service
+        self.tool_registry = create_m4_tool_registry(self.repo)
+        if self.backend_mode == "snowflake" and hasattr(self.repo, "conn_mgr"):
+            reasoner = LiveCortexCoCoAdapter(connection_mgr=self.repo.conn_mgr)
+        else:
+            reasoner = DeterministicCoCoAdapter()
+
+        self.investigation_service = InvestigationService(
             repository=self.repo,
-            approval_service=self.approval_service,
+            tool_registry=self.tool_registry,
+            reasoner=reasoner,
         )
         self.action_tool = CreateWorkOrderAction(
             approval_service=self.approval_service,
@@ -137,9 +150,45 @@ class CommandCenterFacade:
         )
         return result
 
-    def run_reliability_investigation(self, alert_id: str) -> ReliabilityInvestigationResult:
-        """Dispatch Reliability Investigation Agent for an alert."""
-        return self.agent.investigate_alert(alert_id=alert_id)
+    def run_reliability_investigation(
+        self,
+        alert_id: str,
+        force_refresh: bool = False,
+    ) -> InvestigationResult:
+        """Dispatch canonical InvestigationService for an alert."""
+        alert = self.repo.get_alert(alert_id)
+        if not alert:
+            alerts = self.repo.list_alerts()
+            matching = [a for a in alerts if a.alert_id == alert_id]
+            alert = matching[0] if matching else None
+
+        if not alert:
+            raise ValueError(f"Alert '{alert_id}' does not exist.")
+
+        machine_id = alert.machine_id
+        pred_id = getattr(alert, "prediction_id", None)
+        now = datetime.now(timezone.utc)
+        inv_id = f"INV-{machine_id}-{int(now.timestamp())}"
+        req_id = f"REQ-{inv_id}"
+
+        request = InvestigationRequest(
+            request_id=req_id,
+            investigation_id=inv_id,
+            trigger_type=TriggerType.ALERT,
+            trigger_id=alert_id,
+            prediction_id=pred_id,
+            machine_id=machine_id,
+            force_refresh=force_refresh,
+        )
+
+        return self.investigation_service.investigate(request)
+
+    def run_investigation(
+        self,
+        request: InvestigationRequest,
+    ) -> InvestigationResult:
+        """Execute canonical investigation request directly."""
+        return self.investigation_service.investigate(request)
 
     def approve_action(self, approval_id: str, approver_id: str, reason: str) -> Approval:
         """Submit authenticated human approval for an operational action."""
@@ -618,7 +667,12 @@ class CommandCenterFacade:
     def get_agent_activity(self) -> Dict[str, Any]:
         """Return auditable agent execution history and tool call activity."""
         audit_events = self.repo.list_audit_events(limit=50)
-        tool_calls = self.agent.tools.call_history
+        tool_calls: List[Any] = []
+        for t in self.tool_registry.list_tools():
+            tool_calls.extend(t.call_history)
+        if not tool_calls:
+            # Fall back to repository persisted tool calls if in-memory history is fresh
+            tool_calls = getattr(self.repo, "list_tool_calls", lambda **kw: [])()
         return {
             "audit_events": sorted(audit_events, key=lambda a: a.timestamp, reverse=True),
             "tool_calls": sorted(tool_calls, key=lambda t: t.started_at, reverse=True),
@@ -636,7 +690,7 @@ class CommandCenterFacade:
             {"pipeline": "Anomaly Detection (Z-Score & Dual-Signal)", "stage": "DETECT", "status": "HEALTHY", "latency_ms": 14, "source": "services.anomaly_service.AnomalyService"},
             {"pipeline": "Failure Risk Scoring (Additive Weights)", "stage": "PREDICT", "status": "HEALTHY", "latency_ms": 9, "source": "services.reliability_service.ReliabilityService"},
             {"pipeline": "Operational OEE Impact Calculation", "stage": "EVALUATE", "status": "HEALTHY", "latency_ms": 11, "source": "services.oee_service.OEEService"},
-            {"pipeline": "Reliability Investigation Agent", "stage": "INVESTIGATE", "status": "READY", "latency_ms": 420, "source": "agents.reliability.ReliabilityInvestigationAgent"},
+            {"pipeline": "Investigation Service", "stage": "INVESTIGATE", "status": "READY", "latency_ms": 420, "source": "services.investigation_service.InvestigationService"},
             {"pipeline": "Human-in-the-Loop Governance Gateway", "stage": "DECIDE", "status": "GOVERNED", "latency_ms": 5, "source": "services.approval_service.ApprovalService"},
             {"pipeline": "Work Order Action Executor", "stage": "ACT", "status": "IDEMPOTENT", "latency_ms": 8, "source": "tools.actions.CreateWorkOrderAction"},
             {"pipeline": "Physical Telemetry Verification Service", "stage": "VERIFY", "status": "CLOSED_LOOP", "latency_ms": 22, "source": "services.verification_service.VerificationService"},

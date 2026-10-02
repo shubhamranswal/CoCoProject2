@@ -89,9 +89,10 @@ def main() -> None:
             alerts = facade.repo.list_alerts(machine_id="M204", status=AlertStatus.OPEN)
             if alerts:
                 res = facade.run_reliability_investigation(alerts[0].alert_id)
-                st.session_state.selected_investigation_id = res.investigation.investigation_id
+                inv_id = getattr(res, "investigation_id", None) or getattr(getattr(res, "investigation", None), "investigation_id", None)
+                st.session_state.selected_investigation_id = inv_id
                 st.session_state.scenario_stage = "INVESTIGATED"
-                navigate_to("AI Investigations", machine_id="M204", investigation_id=res.investigation.investigation_id)
+                navigate_to("AI Investigations", machine_id="M204", investigation_id=inv_id)
 
     def handle_reset_demo() -> None:
         if facade:

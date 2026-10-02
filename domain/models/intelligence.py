@@ -192,3 +192,19 @@ class InvestigationResult(BaseModel):
     limitations: List[str] = Field(default_factory=list)
     provenance: Dict[str, Any] = Field(default_factory=dict)
     status: InvestigationStatus = InvestigationStatus.COMPLETED
+
+    @property
+    def finding(self) -> Optional[Finding]:
+        return self.findings[0] if self.findings else None
+
+    @property
+    def recommendation(self) -> Optional[Recommendation]:
+        return self.recommendations[0] if self.recommendations else None
+
+    @property
+    def investigation(self) -> "InvestigationResult":
+        return self
+
+    @property
+    def approval(self) -> None:
+        return None

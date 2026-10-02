@@ -254,9 +254,20 @@ def test_verification_requires_completed_work_order():
     alerts = facade.repo.list_alerts(machine_id="M204", status=AlertStatus.OPEN)
     assert len(alerts) >= 1
     inv_res = facade.run_reliability_investigation(alerts[0].alert_id)
+    app_id = f"APP-{inv_res.investigation_id}"
+    facade.approval_service.request_approval(
+        Approval(
+            approval_id=app_id,
+            action_id=f"ACT-{inv_res.investigation_id}",
+            investigation_id=inv_res.investigation_id,
+            machine_id="M204",
+            status=ApprovalStatus.PENDING,
+            requested_by="operator.shubham",
+        )
+    )
 
-    facade.approve_action(inv_res.approval.approval_id, "operator.shubham", "Approved repair")
-    wo = facade.create_work_order_from_approval(inv_res.approval.approval_id, "operator.shubham")
+    facade.approve_action(app_id, "operator.shubham", "Approved repair")
+    wo = facade.create_work_order_from_approval(app_id, "operator.shubham")
 
     # Work order is in APPROVED status (not COMPLETED)
     assert wo.status == WorkOrderStatus.APPROVED
@@ -332,11 +343,22 @@ def test_controlled_demo_reset_and_stage_state_machine():
     assert facade.get_current_demo_stage("M204") == "INVESTIGATED"
 
     # 4. Human Approval
-    facade.approve_action(inv_res.approval.approval_id, "lead.shubham", "Approved bearing swap")
+    app_id = f"APP-{inv_res.investigation_id}"
+    facade.approval_service.request_approval(
+        Approval(
+            approval_id=app_id,
+            action_id=f"ACT-{inv_res.investigation_id}",
+            investigation_id=inv_res.investigation_id,
+            machine_id="M204",
+            status=ApprovalStatus.PENDING,
+            requested_by="lead.shubham",
+        )
+    )
+    facade.approve_action(app_id, "lead.shubham", "Approved bearing swap")
     assert facade.get_current_demo_stage("M204") == "APPROVED"
 
     # 5. Create Work Order
-    wo = facade.create_work_order_from_approval(inv_res.approval.approval_id, "lead.shubham")
+    wo = facade.create_work_order_from_approval(app_id, "lead.shubham")
     assert facade.get_current_demo_stage("M204") == "WORK_ORDER_CREATED"
 
     # 6. Start Work Order

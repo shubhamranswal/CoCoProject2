@@ -100,15 +100,28 @@ def test_facade_closed_loop_workflow(facade: CommandCenterFacade) -> None:
     assert len(alerts) >= 1
     alert = alerts[0]
 
-    # 2. Run Investigation Agent
+    # 2. Run Investigation via Canonical InvestigationService
     inv_res = facade.run_reliability_investigation(alert.alert_id)
-    assert inv_res.investigation.status in (InvestigationStatus.PENDING_APPROVAL, InvestigationStatus.RECOMMENDATION_READY)
+    assert inv_res.status == InvestigationStatus.COMPLETED
     assert inv_res.finding is not None
     assert inv_res.recommendation is not None
-    assert inv_res.approval is not None
+    assert inv_res.approval is None  # M5 Boundary: strictly advisory, zero auto-approval
 
-    inv_id = inv_res.investigation.investigation_id
-    app_id = inv_res.approval.approval_id
+    inv_id = inv_res.investigation_id
+    app_id = f"APP-{inv_id}"
+
+    # Governance Boundary: human operator requests approval for operational action
+    from domain.models import Approval
+    facade.approval_service.request_approval(
+        Approval(
+            approval_id=app_id,
+            action_id=f"ACT-{inv_id}",
+            investigation_id=inv_id,
+            machine_id="M204",
+            status=ApprovalStatus.PENDING,
+            requested_by="lead.technician.dave",
+        )
+    )
 
     # 3. Approve Action
     approved = facade.approve_action(
@@ -164,8 +177,21 @@ def test_facade_failed_verification_workflow(facade: CommandCenterFacade) -> Non
     alerts = facade.repo.list_alerts(machine_id="M204", status=AlertStatus.OPEN)
     alert = alerts[0]
     inv_res = facade.run_reliability_investigation(alert.alert_id)
-    assert inv_res.approval is not None
-    app_id = inv_res.approval.approval_id
+    assert inv_res.status == InvestigationStatus.COMPLETED
+    assert inv_res.approval is None  # M5 boundary
+    app_id = f"APP-{inv_res.investigation_id}"
+
+    from domain.models import Approval
+    facade.approval_service.request_approval(
+        Approval(
+            approval_id=app_id,
+            action_id=f"ACT-{inv_res.investigation_id}",
+            investigation_id=inv_res.investigation_id,
+            machine_id="M204",
+            status=ApprovalStatus.PENDING,
+            requested_by="lead.dave",
+        )
+    )
 
     facade.approve_action(app_id, "lead.dave", "Approved.")
     wo = facade.create_work_order_from_approval(app_id, "lead.dave")
