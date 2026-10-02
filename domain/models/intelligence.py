@@ -148,6 +148,8 @@ class InvestigationRequest(BaseModel):
     requested_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     scope: Optional[str] = None
     user_query: Optional[str] = None
+    force_refresh: bool = False
+
 
 
 class Investigation(BaseModel):

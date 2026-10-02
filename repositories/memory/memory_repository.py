@@ -542,6 +542,10 @@ class InMemoryRepository(
             items = self._failures.get(machine_id, [])
             return sorted(items, key=lambda f: f.occurred_at, reverse=True)
 
+    def get_downtime_event_count(self, machine_id: str) -> int:
+        with self._lock:
+            return len(self._failures.get(machine_id, []))
+
     def save_failure_risk(self, risk: FailureRisk) -> None:
         with self._lock:
             self._failure_risks.setdefault(risk.machine_id, []).append(risk)
@@ -768,13 +772,27 @@ class InMemoryRepository(
     ) -> Investigation:
         with self._lock:
             self.create_investigation(investigation)
-            if evidence:
+            inv = self._investigations.get(investigation.investigation_id)
+            if evidence is not None:
+                if inv:
+                    inv.evidence = []
                 self.save_evidence(evidence)
-            if hypotheses:
+            if hypotheses is not None:
+                self._hypotheses[investigation.investigation_id] = []
+                if inv:
+                    inv.hypotheses = []
                 self.save_hypotheses(hypotheses)
-            if findings:
+            if findings is not None:
+                self._findings[investigation.investigation_id] = []
+                if inv:
+                    inv.findings = []
+                    inv.finding = None
                 self.save_findings(findings)
-            if recommendations:
+            if recommendations is not None:
+                self._recommendations[investigation.investigation_id] = []
+                if inv:
+                    inv.recommendations = []
+                    inv.recommendation = None
                 self.save_recommendations(recommendations)
             if tool_calls:
                 self.save_tool_calls(tool_calls, investigation_id=investigation.investigation_id)

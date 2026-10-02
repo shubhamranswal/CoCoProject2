@@ -428,18 +428,40 @@ class SnowflakeRepository(
                 (machine_id,),
             )
             rows = cur.fetchall()
+
+            def _map_st(raw: Optional[str]) -> SensorType:
+                if not raw:
+                    return SensorType.VIBRATION
+                u = raw.upper()
+                if "TEMP" in u or "TMP" in u:
+                    return SensorType.TEMPERATURE
+                if "CURR" in u:
+                    return SensorType.CURRENT
+                if "RPM" in u or "SPEED" in u:
+                    return SensorType.RPM
+                if "FLOW" in u:
+                    return SensorType.FLOW
+                if "PRESS" in u:
+                    return SensorType.PRESSURE
+                if "VIB" in u:
+                    return SensorType.VIBRATION
+                return SensorType.VIBRATION
+
             return [
                 Sensor(
                     sensor_id=r[0],
                     machine_id=r[1],
                     component_id=r[2],
-                    sensor_type=SensorType(r[3]) if r[3] in SensorType._value2member_map_ else SensorType.VIBRATION,
+                    sensor_type=_map_st(r[3]),
                     name=r[0],
                     unit=r[4],
                     sampling_rate_hz=float(r[5]) if r[5] is not None else 1.0,
                     range_min=0.0,
                     range_max=float(r[7] or r[6] or 100.0),
                     is_active=True,
+                    warn_threshold=float(r[6]) if r[6] is not None else None,
+                    crit_threshold=float(r[7]) if r[7] is not None else None,
+                    signal_name=str(r[3]) if r[3] else None,
                 )
                 for r in rows
             ]
@@ -846,6 +868,7 @@ class SnowflakeRepository(
                 title=r[5],
                 description=r[6],
                 failure_mode=FailureMode(r[7]) if r[7] in FailureMode._value2member_map_ else FailureMode.BEARING_DEGRADATION,
+                failure_code=r[7],
                 priority=Priority(r[8]) if r[8] in Priority._value2member_map_ else Priority.HIGH,
                 status=WorkOrderStatus(r[9]) if r[9] in WorkOrderStatus._value2member_map_ else WorkOrderStatus.OPEN,
                 assigned_to=r[10],
@@ -891,6 +914,7 @@ class SnowflakeRepository(
                     title=r[5],
                     description=r[6],
                     failure_mode=FailureMode(r[7]) if r[7] in FailureMode._value2member_map_ else FailureMode.BEARING_DEGRADATION,
+                    failure_code=r[7],
                     priority=Priority(r[8]) if r[8] in Priority._value2member_map_ else Priority.HIGH,
                     status=WorkOrderStatus(r[9]) if r[9] in WorkOrderStatus._value2member_map_ else WorkOrderStatus.OPEN,
                     assigned_to=r[10],
@@ -955,19 +979,42 @@ class SnowflakeRepository(
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT event_id, machine_id, '' AS component_id, 'BEARING_DEGRADATION' AS failure_mode, "
+                "SELECT event_id, machine_id, "
+                "CASE "
+                "  WHEN CONTAINS(reason_code, 'BRG') THEN 'C-' || machine_id || '-BRG' "
+                "  WHEN CONTAINS(reason_code, 'MTR') THEN 'C-' || machine_id || '-MTR' "
+                "  WHEN CONTAINS(reason_code, 'DRV') THEN 'C-' || machine_id || '-DRV' "
+                "  WHEN CONTAINS(reason_code, 'TLG') THEN 'C-' || machine_id || '-TLG' "
+                "  WHEN CONTAINS(reason_code, 'ELC') THEN 'C-' || machine_id || '-ELC' "
+                "  ELSE 'C-' || machine_id || '-BRG' END AS comp_id, "
+                "COALESCE(reason_code, ''), "
                 "start_ts, COALESCE(reason_description, reason_code), COALESCE(duration_min / 60.0, 0.0), "
                 "COALESCE(notes, ''), end_ts "
-                "FROM COCO_FACTORY.CORE.DOWNTIME_EVENT WHERE machine_id = %s ORDER BY start_ts DESC",
+                "FROM COCO_FACTORY.CORE.DOWNTIME_EVENT "
+                "WHERE machine_id = %s AND (LOWER(category) = 'breakdown' OR STARTSWITH(reason_code, 'BD-')) "
+                "ORDER BY start_ts DESC",
                 (machine_id,),
             )
             rows = cur.fetchall()
+
+            def _map_fm(code: str) -> FailureMode:
+                u = code.upper()
+                if "BRG" in u or "BEARING" in u:
+                    return FailureMode.BEARING_DEGRADATION
+                if "MTR" in u or "MOTOR" in u:
+                    return FailureMode.MOTOR_OVERHEATING
+                if "DRV" in u or "GEAR" in u or "BELT" in u:
+                    return FailureMode.MECHANICAL_WEAR
+                if "TLG" in u or "TOOL" in u:
+                    return FailureMode.MECHANICAL_WEAR
+                return FailureMode.UNPLANNED_DOWNTIME
+
             return [
                 Failure(
                     failure_id=r[0],
                     machine_id=r[1],
                     component_id=r[2],
-                    failure_mode=FailureMode.BEARING_DEGRADATION,
+                    failure_mode=_map_fm(r[3]),
                     occurred_at=r[4],
                     root_cause=r[5],
                     downtime_hours=float(r[6]),
@@ -976,6 +1023,17 @@ class SnowflakeRepository(
                 )
                 for r in rows
             ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_downtime_event_count(self, machine_id: str) -> int:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT COUNT(*) FROM COCO_FACTORY.CORE.DOWNTIME_EVENT WHERE machine_id = %s", (machine_id,))
+            r = cur.fetchone()
+            return int(r[0]) if r and r[0] is not None else 0
         finally:
             cur.close()
             conn.close()
@@ -1867,10 +1925,20 @@ class SnowflakeRepository(
                 completed_at=r[15],
                 created_at=r[16],
             )
-            return inv
         finally:
             cur.close()
             conn.close()
+
+        if inv:
+            inv.evidence = self.get_evidence(investigation_id)
+            inv.hypotheses = self.get_hypotheses(investigation_id)
+            inv.findings = self.get_findings(investigation_id)
+            inv.recommendations = self.get_recommendations(investigation_id)
+            if inv.findings:
+                inv.finding = inv.findings[0]
+            if inv.recommendations:
+                inv.recommendation = inv.recommendations[0]
+        return inv
 
     def save_evidence(self, evidence: List[Evidence]) -> None:
         if not evidence:
@@ -2153,13 +2221,29 @@ class SnowflakeRepository(
         try:
             cur.execute("BEGIN")
             self._merge_investigation_record(cur, investigation)
-            if evidence:
+            if evidence is not None:
+                cur.execute(
+                    "DELETE FROM COCO_FACTORY.APP.INVESTIGATION_EVIDENCE WHERE investigation_id = %s",
+                    (investigation.investigation_id,),
+                )
                 self._merge_evidence_records(cur, evidence)
-            if hypotheses:
+            if hypotheses is not None:
+                cur.execute(
+                    "DELETE FROM COCO_FACTORY.APP.INVESTIGATION_HYPOTHESIS WHERE investigation_id = %s",
+                    (investigation.investigation_id,),
+                )
                 self._merge_hypothesis_records(cur, hypotheses)
-            if findings:
+            if findings is not None:
+                cur.execute(
+                    "DELETE FROM COCO_FACTORY.APP.INVESTIGATION_FINDING WHERE investigation_id = %s",
+                    (investigation.investigation_id,),
+                )
                 self._merge_finding_records(cur, findings)
-            if recommendations:
+            if recommendations is not None:
+                cur.execute(
+                    "DELETE FROM COCO_FACTORY.APP.INVESTIGATION_RECOMMENDATION WHERE investigation_id = %s",
+                    (investigation.investigation_id,),
+                )
                 self._merge_recommendation_records(cur, recommendations)
             if tool_calls:
                 self._merge_tool_call_records(cur, tool_calls, investigation_id=investigation.investigation_id)

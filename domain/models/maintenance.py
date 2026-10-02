@@ -47,6 +47,7 @@ class WorkOrder(BaseModel):
     title: str
     description: str
     failure_mode: FailureMode
+    failure_code: Optional[str] = None
     priority: Priority
     status: WorkOrderStatus = WorkOrderStatus.DRAFT
     assigned_to: Optional[str] = None

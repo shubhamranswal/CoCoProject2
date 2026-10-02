@@ -12,6 +12,7 @@ from tools.read.base import BaseReadTool
 class SensorSummaryItem(BaseModel):
     sensor_id: str
     machine_id: str
+    component_id: Optional[str] = None
     metric: str
     unit: str
     warning_threshold: float
@@ -54,6 +55,8 @@ class GetSensorContextTool(BaseReadTool):
         items: List[SensorSummaryItem] = []
         for s in sensors:
             measurements = self.repo.get_recent_measurements(params.machine_id, sensor_id=s.sensor_id, limit=100)
+            if measurements:
+                measurements = sorted(measurements, key=lambda m: getattr(m, 'timestamp', getattr(m, 'ts', 0)))
             vals = [m.value for m in measurements if m.value is not None]
 
             # Signal name
@@ -94,8 +97,8 @@ class GetSensorContextTool(BaseReadTool):
                     warn = warn or 35.0
                     crit = crit or 45.0
                 elif "FLW" in s_id_str or "FLOW" in s_type_str:
-                    warn = warn or 15.0
-                    crit = crit or 10.0
+                    warn = warn or 22.0
+                    crit = crit or 15.0
                 else:
                     warn = warn or 100.0
                     crit = crit or 120.0
@@ -112,9 +115,14 @@ class GetSensorContextTool(BaseReadTool):
             p_max = round(max(vals), 3) if vals else None
             p_min = round(min(vals), 3) if vals else None
 
-            warn_exceeded = (latest_val is not None and latest_val >= warn) or (p_max is not None and p_max >= warn)
-            crit_exceeded = (latest_val is not None and latest_val >= crit) or (p_max is not None and p_max >= crit)
-            exceedances = sum(1 for v in vals if v >= warn)
+            if warn is not None and crit is not None and warn > crit:
+                warn_exceeded = latest_val is not None and latest_val <= warn
+                crit_exceeded = latest_val is not None and latest_val <= crit
+                exceedances = sum(1 for v in vals if v <= warn)
+            else:
+                warn_exceeded = (latest_val is not None and latest_val >= warn) or (p_max is not None and p_max >= warn)
+                crit_exceeded = (latest_val is not None and crit is not None and (latest_val >= crit or (p_max is not None and p_max >= crit)))
+                exceedances = sum(1 for v in vals if v >= warn)
 
             # Trend heuristic
             trend = "STABLE"
@@ -129,6 +137,7 @@ class GetSensorContextTool(BaseReadTool):
                 SensorSummaryItem(
                     sensor_id=s.sensor_id,
                     machine_id=params.machine_id,
+                    component_id=getattr(s, "component_id", None),
                     metric=metric_name,
                     unit=s.unit,
                     warning_threshold=warn,

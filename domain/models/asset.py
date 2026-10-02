@@ -66,3 +66,7 @@ class Sensor(BaseModel):
     range_min: float
     range_max: float
     is_active: bool = True
+    warn_threshold: Optional[float] = None
+    crit_threshold: Optional[float] = None
+    signal_name: Optional[str] = None
+

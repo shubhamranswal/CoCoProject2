@@ -154,10 +154,11 @@ class GetProductionContextTool(BaseReadTool):
 
     def _run(self, params: GetProductionContextInput) -> ProductionContextOutput:
         orders = self.repo.list_production_orders(machine_id=params.machine_id)
-        # Filter for active or in-progress orders
-        active_orders = [o for o in orders if o.status.lower() in ("in_progress", "active", "open", "scheduled")]
-        if not active_orders:
-            active_orders = orders[:3]
+        # Strictly ensure all returned orders belong to the requested machine
+        mach_orders = [o for o in orders if getattr(o, "machine_id", None) == params.machine_id]
+        active_orders = [o for o in mach_orders if o.status.lower() in ("in_progress", "active", "open", "scheduled")]
+        if not active_orders and mach_orders:
+            active_orders = mach_orders[:1]
 
         items: List[ProductionOrderContextItem] = []
         total_exp = 0.0

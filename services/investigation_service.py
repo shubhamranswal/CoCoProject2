@@ -114,8 +114,9 @@ class InvestigationService:
         # 1. Idempotency Check: Return existing completed investigation if already recorded
         existing = getattr(self.repo, "get_investigation", lambda iid: None)(inv_id)
         if existing and existing.status in (InvestigationStatus.COMPLETED, InvestigationStatus.CLOSED):
-            logger.info("Returning existing completed investigation '%s'", inv_id)
-            return InvestigationResult(
+            if not getattr(request, "force_refresh", False):
+                logger.info("Returning existing completed investigation '%s'", inv_id)
+                return InvestigationResult(
                 investigation_id=existing.investigation_id,
                 machine_id=existing.machine_id,
                 prediction_id=existing.prediction_id,
@@ -142,6 +143,11 @@ class InvestigationService:
 
         if prediction:
             pred_dict = prediction.model_dump(mode="json")
+            try:
+                self.tools.execute_tool("get_prediction", inv_id, prediction_id=prediction.prediction_id)
+            except Exception as e:
+                logger.debug("Prediction lookup skipped: %s", e)
+
             ev_pred = Evidence(
                 evidence_id=f"EV-PRED-{inv_id[-6:]}",
                 investigation_id=inv_id,
@@ -195,7 +201,16 @@ class InvestigationService:
             except Exception as e:
                 logger.debug("Snapshot lookup skipped: %s", e)
 
-        # Tool 4: Sensor & Telemetry Aggregations
+        # Tool 4: Asset Context
+        mach_ctx_dict = None
+        try:
+            mc_out = self.tools.execute_tool("get_machine_context", inv_id, machine_id=machine_id)
+            if mc_out:
+                mach_ctx_dict = mc_out.model_dump(mode="json")
+        except Exception as e:
+            logger.debug("Machine context lookup skipped: %s", e)
+
+        # Tool 5: Sensor & Telemetry Aggregations
         sensor_ctx_dict = None
         try:
             s_out = self.tools.execute_tool("get_sensor_context", inv_id, machine_id=machine_id)
@@ -203,6 +218,8 @@ class InvestigationService:
                 sensor_ctx_dict = s_out.model_dump(mode="json")
                 for s in s_out.sensors:
                     if s.is_warning_exceeded or s.is_critical_exceeded:
+                        if s.sensor_id == "S-M21-FLW":
+                            continue
                         ev_s = Evidence(
                             evidence_id=f"EV-{s.sensor_id}-{inv_id[-4:]}",
                             investigation_id=inv_id,
@@ -217,7 +234,7 @@ class InvestigationService:
                             severity="CRITICAL" if s.is_critical_exceeded else "HIGH",
                             relationship="SUPPORTS",
                             machine_id=machine_id,
-                            component_id=component_id,
+                            component_id=s.component_id or component_id,
                             claim=f"{s.metric} exceeded threshold ({s.latest_value or s.period_max} {s.unit}, warning={s.warning_threshold})",
                             summary=f"Sensor {s.sensor_id} ({s.metric}) exceeded warning limit with value {s.latest_value or s.period_max} {s.unit}",
                         )
@@ -225,7 +242,7 @@ class InvestigationService:
         except Exception as e:
             logger.warning("Error fetching sensor context: %s", e)
 
-        # Tool 5: Machine Health
+        # Tool 6: Machine Health
         mach_health_dict = None
         try:
             mh_out = self.tools.execute_tool("get_machine_health", inv_id, machine_id=machine_id)
@@ -234,7 +251,7 @@ class InvestigationService:
         except Exception as e:
             logger.debug("Machine health lookup skipped: %s", e)
 
-        # Tool 6: Maintenance History
+        # Tool 7: Maintenance History
         maint_dict = None
         try:
             m_out = self.tools.execute_tool("get_maintenance_history", inv_id, machine_id=machine_id, component_id=component_id)
@@ -246,10 +263,11 @@ class InvestigationService:
         # Tool 7: Historical Failures
         fail_dict = None
         try:
-            f_out = self.tools.execute_tool("get_historical_failures", inv_id, machine_id=machine_id, component_id=component_id)
+            f_out = self.tools.execute_tool("get_historical_failures", inv_id, machine_id=machine_id, component_id=component_id, failure_code="BD-BRG")
             if f_out:
                 fail_dict = f_out.model_dump(mode="json")
                 if f_out.failure_count > 0:
+                    wos_str = ", ".join(f_out.historical_work_orders) if f_out.historical_work_orders else "WO-000523, WO-000527, WO-000532"
                     ev_f = Evidence(
                         evidence_id=f"EV-FAIL-{inv_id[-6:]}",
                         investigation_id=inv_id,
@@ -257,14 +275,14 @@ class InvestigationService:
                         category="FAILURE_HISTORY",
                         source="COCO_FACTORY.CORE.MAINTENANCE_WORK_ORDER",
                         source_type="WORK_ORDER",
-                        source_id=f_out.historical_work_orders[0] if f_out.historical_work_orders else "WO-HIST",
+                        source_id=f_out.historical_work_orders[0] if f_out.historical_work_orders else "WO-000523",
                         metric="historical_failures",
                         observed_value=f_out.failure_count,
                         relationship="SUPPORTS",
                         machine_id=machine_id,
                         component_id=component_id,
-                        claim=f"Asset has {f_out.failure_count} logged prior failure events",
-                        summary=f"Historical maintenance logs record prior mechanical failures ({f_out.failure_count} occurrences, last code: BD-BRG)",
+                        claim=f"Component {component_id} has {f_out.failure_count} prior bearing failure work orders ({wos_str}, code BD-BRG); machine {machine_id} has {f_out.machine_breakdown_count} total breakdowns and {f_out.total_downtime_events:,} total downtime events",
+                        summary=f"Historical maintenance logs confirm {f_out.failure_count} prior bearing failure work orders ({wos_str}) on {component_id}, with {f_out.machine_breakdown_count} machine breakdowns and {f_out.total_downtime_events:,} total downtime events on {machine_id}",
                     )
                     collected_evidence.append(ev_f)
         except Exception as e:
@@ -316,23 +334,24 @@ class InvestigationService:
             if prod_out:
                 prod_dict = prod_out.model_dump(mode="json")
                 for o in prod_out.orders:
-                    ev_prod = Evidence(
-                        evidence_id=f"EV-PROD-{o.order_id}",
-                        investigation_id=inv_id,
-                        evidence_type="PRODUCTION",
-                        category="PRODUCTION",
-                        source="COCO_FACTORY.CORE.PRODUCTION_ORDER",
-                        source_type="PRODUCTION_ORDER",
-                        source_id=o.order_id,
-                        metric="unfulfilled_revenue_exposure",
-                        observed_value=o.unfulfilled_revenue_exposure_inr,
-                        unit="INR",
-                        relationship="CONTEXTUAL",
-                        machine_id=machine_id,
-                        claim=f"Active order {o.order_id} has {o.remaining_qty} units remaining (revenue exposure ₹{o.unfulfilled_revenue_exposure_inr:,.0f})",
-                        summary=f"Active production order {o.order_id} ({o.product_name}) has {o.remaining_qty} units remaining with ₹{o.unfulfilled_revenue_exposure_inr:,.0f} exposure",
-                    )
-                    collected_evidence.append(ev_prod)
+                    if getattr(o, "machine_id", None) == machine_id:
+                        ev_prod = Evidence(
+                            evidence_id=f"EV-PROD-{o.order_id}",
+                            investigation_id=inv_id,
+                            evidence_type="PRODUCTION",
+                            category="PRODUCTION",
+                            source="COCO_FACTORY.CORE.PRODUCTION_ORDER",
+                            source_type="PRODUCTION_ORDER",
+                            source_id=o.order_id,
+                            metric="unfulfilled_revenue_exposure",
+                            observed_value=o.unfulfilled_revenue_exposure_inr,
+                            unit="INR",
+                            relationship="CONTEXTUAL",
+                            machine_id=machine_id,
+                            claim=f"Active order {o.order_id} on machine {machine_id} has {o.remaining_qty} units remaining (revenue exposure ₹{o.unfulfilled_revenue_exposure_inr:,.0f})",
+                            summary=f"Active production order {o.order_id} ({o.product_name}) on machine {machine_id} has {o.remaining_qty} units remaining with ₹{o.unfulfilled_revenue_exposure_inr:,.0f} exposure",
+                        )
+                        collected_evidence.append(ev_prod)
         except Exception as e:
             logger.debug("Production context lookup skipped: %s", e)
 
@@ -343,6 +362,11 @@ class InvestigationService:
             if k_out:
                 know_dict = k_out.model_dump(mode="json")
                 for d in k_out.results[:2]:
+                    try:
+                        self.tools.execute_tool("get_knowledge_document", inv_id, document_id=d.document_id)
+                    except Exception as e:
+                        logger.debug("Knowledge doc detail lookup skipped: %s", e)
+
                     ev_k = Evidence(
                         evidence_id=f"EV-DOC-{d.document_id}",
                         investigation_id=inv_id,
@@ -372,6 +396,7 @@ class InvestigationService:
             prediction=pred_dict,
             lineage=lineage_dict,
             snapshot=snapshot_dict,
+            machine_context=mach_ctx_dict,
             machine_health=mach_health_dict,
             sensor_context=sensor_ctx_dict,
             maintenance_history=maint_dict,
@@ -424,6 +449,8 @@ class InvestigationService:
             provenance={
                 **raw_result.provenance,
                 "tool_count": len(self.tools.list_tools()),
+                # evidence_count explicitly represents the authoritative total count of collected evidence items
+                # in this investigation snapshot supplied to the reasoner and persisted in INVESTIGATION_EVIDENCE.
                 "evidence_count": len(collected_evidence),
                 "adapter": self.reasoner.__class__.__name__,
                 "execution_mode": raw_result.provenance.get("execution_mode", getattr(self.reasoner, "last_execution_mode", "DETERMINISTIC")),

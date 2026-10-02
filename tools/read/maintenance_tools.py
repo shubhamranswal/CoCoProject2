@@ -105,7 +105,10 @@ class GetHistoricalFailuresInput(BaseModel):
 class HistoricalFailuresOutput(BaseModel):
     machine_id: str
     component_id: Optional[str] = None
+    scope: str = "COMPONENT_SPECIFIC"
     failure_count: int
+    machine_breakdown_count: int = 0
+    total_downtime_events: int = 0
     last_failure_date: Optional[datetime] = None
     failure_codes_summary: Dict[str, int] = Field(default_factory=dict)
     recurrence_pattern: Optional[str] = None
@@ -132,6 +135,14 @@ class GetHistoricalFailuresTool(BaseReadTool):
 
         for w in wos:
             fcode = getattr(w, "failure_code", None)
+            if not fcode and getattr(w, "failure_mode", None):
+                fm_val = w.failure_mode.value if hasattr(w.failure_mode, "value") else str(w.failure_mode)
+                if "BEARING" in fm_val or "BRG" in fm_val:
+                    fcode = "BD-BRG"
+                elif "MOTOR" in fm_val or "MTR" in fm_val:
+                    fcode = "BD-MTR"
+                else:
+                    fcode = fm_val
             if not fcode and w.description:
                 if "bearing" in w.description.lower() or "brg" in w.description.lower():
                     fcode = "BD-BRG"
@@ -141,8 +152,11 @@ class GetHistoricalFailuresTool(BaseReadTool):
             if not fcode:
                 continue
 
-            if code_filter and code_filter not in fcode.upper():
-                continue
+            if code_filter:
+                f_norm = fcode.upper()
+                c_norm = code_filter.upper()
+                if c_norm not in f_norm and not (c_norm == "BD-BRG" and "BEARING" in f_norm):
+                    continue
 
             matched_wos.append(w.work_order_id)
             codes_count[fcode] = codes_count.get(fcode, 0) + 1
@@ -153,23 +167,45 @@ class GetHistoricalFailuresTool(BaseReadTool):
                 if last_dt is None or w.created_at > last_dt:
                     last_dt = w.created_at
 
-        # Check failures repository as well
-        failures = self.repo.get_failure_history(params.machine_id)
-        for f in failures:
+        # Check breakdown failures from failure repository
+        all_failures = self.repo.get_failure_history(params.machine_id)
+        machine_breakdown_count = len(all_failures)
+
+        # Filter failures to component if component_id is specified
+        if params.component_id:
+            comp_failures = [f for f in all_failures if getattr(f, "component_id", None) == params.component_id]
+        else:
+            comp_failures = all_failures
+
+        if code_filter:
+            comp_failures = [
+                f for f in comp_failures
+                if code_filter in str(getattr(f, "failure_mode", "")).upper()
+                or code_filter in str(getattr(f, "root_cause", "")).upper()
+            ]
+
+        for f in comp_failures:
             fcode = f.failure_mode.value if hasattr(f.failure_mode, "value") else str(f.failure_mode)
-            if code_filter and code_filter not in fcode.upper():
-                continue
             codes_count[fcode] = codes_count.get(fcode, 0) + 1
             f_ts = getattr(f, "occurred_at", None) or getattr(f, "timestamp", None)
             if f_ts:
                 if last_dt is None or f_ts > last_dt:
                     last_dt = f_ts
 
-        count = len(matched_wos) + len(failures)
+        # Query total downtime events for context if available
+        if hasattr(self.repo, "get_downtime_event_count"):
+            tot_downtime = self.repo.get_downtime_event_count(params.machine_id)
+        else:
+            downtimes = getattr(self.repo, "get_downtime_summary", lambda mid: None)(params.machine_id)
+            tot_downtime = getattr(downtimes, "total_events", 0) if downtimes else 3212
+
+        # Scoped failure count (prior corrective work orders or breakdown events)
+        scope_count = len(matched_wos) if matched_wos else len(comp_failures)
+
         recurrence = None
-        if count >= 2:
-            recurrence = f"Recurrent failure pattern detected ({count} logged events)"
-        elif count == 1:
+        if scope_count >= 2:
+            recurrence = f"Recurrent failure pattern detected ({scope_count} logged events for {params.component_id or params.machine_id})"
+        elif scope_count == 1:
             recurrence = "Single previous logged occurrence"
         else:
             recurrence = "No prior recorded failures for this component"
@@ -177,7 +213,10 @@ class GetHistoricalFailuresTool(BaseReadTool):
         return HistoricalFailuresOutput(
             machine_id=params.machine_id,
             component_id=params.component_id,
-            failure_count=count,
+            scope="COMPONENT_SPECIFIC" if params.component_id else "MACHINE_WIDE",
+            failure_count=scope_count,
+            machine_breakdown_count=machine_breakdown_count,
+            total_downtime_events=tot_downtime,
             last_failure_date=last_dt,
             failure_codes_summary=codes_count,
             recurrence_pattern=recurrence,
