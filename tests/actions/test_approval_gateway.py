@@ -96,12 +96,12 @@ def test_human_operator_can_approve_proposal(gateway, repo):
 
     approval = gateway.approve_proposal(
         proposal_id="PROP-003",
-        approver_id="sarah.chen",
+        approver_id="shubham.r",
         reason="Verified telemetry anomaly and approved bearing replacement",
     )
 
     assert approval.status == ApprovalStatus.APPROVED
-    assert approval.decision_by == "sarah.chen"
+    assert approval.decision_by == "shubham.r"
 
     # Proposal state is updated to APPROVED
     persisted_prop = repo.get_action_proposal("PROP-003")
@@ -122,7 +122,7 @@ def test_human_operator_can_reject_proposal(gateway, repo):
 
     rejected = gateway.reject_proposal(
         proposal_id="PROP-004",
-        approver_id="sarah.chen",
+        approver_id="shubham.r",
         reason="False positive after physical check",
     )
     assert rejected.status == ApprovalStatus.REJECTED

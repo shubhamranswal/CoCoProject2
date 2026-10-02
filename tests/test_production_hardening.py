@@ -132,11 +132,11 @@ def test_operational_state_persistence():
         status=ApprovalStatus.PENDING,
     )
     repo.create_approval(app)
-    app_svc.approve_action("APP-PERSIST-001", "operator.sarah", "Approved bearing replacement")
+    app_svc.approve_action("APP-PERSIST-001", "operator.shubham", "Approved bearing replacement")
 
     # Execute action to create work order
     wo = action_tool.execute(
-        caller_actor="operator.sarah",
+        caller_actor="operator.shubham",
         approval_id="APP-PERSIST-001",
         machine_id="M204",
         component_id="COMP-M204-BRG-DE",
@@ -231,11 +231,11 @@ def test_work_order_state_machine_validation():
     assert exc.value.entity_id == "WO-STATE-001"
 
     # Valid transition to IN_PROGRESS
-    started = wo_svc.transition_status("WO-STATE-001", WorkOrderStatus.IN_PROGRESS, actor="tech.sarah")
+    started = wo_svc.transition_status("WO-STATE-001", WorkOrderStatus.IN_PROGRESS, actor="tech.shubham")
     assert started.status == WorkOrderStatus.IN_PROGRESS
 
     # Valid transition to COMPLETED
-    completed = wo_svc.transition_status("WO-STATE-001", WorkOrderStatus.COMPLETED, actor="tech.sarah")
+    completed = wo_svc.transition_status("WO-STATE-001", WorkOrderStatus.COMPLETED, actor="tech.shubham")
     assert completed.status == WorkOrderStatus.COMPLETED
 
     # Cannot transition backward from COMPLETED to IN_PROGRESS
@@ -255,8 +255,8 @@ def test_verification_requires_completed_work_order():
     assert len(alerts) >= 1
     inv_res = facade.run_reliability_investigation(alerts[0].alert_id)
 
-    facade.approve_action(inv_res.approval.approval_id, "operator.sarah", "Approved repair")
-    wo = facade.create_work_order_from_approval(inv_res.approval.approval_id, "operator.sarah")
+    facade.approve_action(inv_res.approval.approval_id, "operator.shubham", "Approved repair")
+    wo = facade.create_work_order_from_approval(inv_res.approval.approval_id, "operator.shubham")
 
     # Work order is in APPROVED status (not COMPLETED)
     assert wo.status == WorkOrderStatus.APPROVED
@@ -291,7 +291,7 @@ def test_approval_safety_and_expiration():
 
     # Approving expired approval raises ApprovalExpiredError
     with pytest.raises(ApprovalExpiredError) as exc:
-        app_svc.approve_action("APP-EXP-001", "operator.sarah", "Late approval")
+        app_svc.approve_action("APP-EXP-001", "operator.shubham", "Late approval")
     assert "expired" in str(exc.value).lower()
 
     # Autonomous bot cannot approve
@@ -332,11 +332,11 @@ def test_controlled_demo_reset_and_stage_state_machine():
     assert facade.get_current_demo_stage("M204") == "INVESTIGATED"
 
     # 4. Human Approval
-    facade.approve_action(inv_res.approval.approval_id, "lead.sarah", "Approved bearing swap")
+    facade.approve_action(inv_res.approval.approval_id, "lead.shubham", "Approved bearing swap")
     assert facade.get_current_demo_stage("M204") == "APPROVED"
 
     # 5. Create Work Order
-    wo = facade.create_work_order_from_approval(inv_res.approval.approval_id, "lead.sarah")
+    wo = facade.create_work_order_from_approval(inv_res.approval.approval_id, "lead.shubham")
     assert facade.get_current_demo_stage("M204") == "WORK_ORDER_CREATED"
 
     # 6. Start Work Order

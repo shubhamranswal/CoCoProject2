@@ -85,10 +85,10 @@ def test_failed_closed_loop_recovery_path():
     inv = inv_res.investigation
 
     app = inv_res.approval
-    approval_svc.approve_action(app.approval_id, approver_id="operator.sarah", reason="Authorized repair")
+    approval_svc.approve_action(app.approval_id, approver_id="operator.shubham", reason="Authorized repair")
 
     wo = action_tool.execute(
-        caller_actor="operator.sarah",
+        caller_actor="operator.shubham",
         approval_id=app.approval_id,
         machine_id="M204",
         component_id="COMP-M204-BRG-DE",

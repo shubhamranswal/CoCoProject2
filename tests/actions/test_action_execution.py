@@ -66,7 +66,7 @@ def test_unapproved_proposal_execution_is_blocked(execution_env):
     with pytest.raises(ApprovalRequiredError):
         exec_svc.execute_proposal(
             proposal_id="PROP-UNAPPROVED",
-            caller_actor="sarah.chen",
+            caller_actor="shubham.r",
         )
 
 
@@ -99,14 +99,14 @@ def test_successful_work_order_execution_after_human_approval(execution_env):
         investigation_id="INV-WO-1",
         machine_id="M21",
         status=ApprovalStatus.APPROVED,
-        decision_by="sarah.chen",
+        decision_by="shubham.r",
     )
     repo.create_approval(app)
 
     # 3. Execute proposal
     execution = exec_svc.execute_proposal(
         proposal_id="PROP-WO-1",
-        caller_actor="sarah.chen",
+        caller_actor="shubham.r",
         idempotency_key="IDEM-WO-1",
     )
 
@@ -196,14 +196,14 @@ def test_idempotent_execution_returns_prior_result(execution_env):
         investigation_id="INV-IDEM",
         machine_id="M21",
         status=ApprovalStatus.APPROVED,
-        decision_by="sarah.chen",
+        decision_by="shubham.r",
     )
     repo.create_approval(app)
 
     # First execution
     exec1 = exec_svc.execute_proposal(
         proposal_id="PROP-IDEM",
-        caller_actor="sarah.chen",
+        caller_actor="shubham.r",
         idempotency_key="IDEM-STABLE-KEY-999",
     )
     assert exec1.status == "SUCCESS"
@@ -213,7 +213,7 @@ def test_idempotent_execution_returns_prior_result(execution_env):
     # First re-allow status if needed or check existing
     exec2 = exec_svc.execute_proposal(
         proposal_id="PROP-IDEM",
-        caller_actor="sarah.chen",
+        caller_actor="shubham.r",
         idempotency_key="IDEM-STABLE-KEY-999",
     )
     assert exec2.execution_id == exec1.execution_id
@@ -231,7 +231,7 @@ def test_repository_action_execution_idempotency(execution_env):
         approval_id="APP-TEST-001",
         action_type="CREATE_WORK_ORDER",
         machine_id="M21",
-        executed_by="sarah.chen",
+        executed_by="shubham.r",
         status="SUCCESS",
         idempotency_key="IDEM-REPO-TEST-001",
         result_data={"work_order_id": "WO-001"},
@@ -246,7 +246,7 @@ def test_repository_action_execution_idempotency(execution_env):
         approval_id="APP-TEST-001",
         action_type="CREATE_WORK_ORDER",
         machine_id="M21",
-        executed_by="sarah.chen",
+        executed_by="shubham.r",
         status="SUCCESS",
         idempotency_key="IDEM-REPO-TEST-001",
         result_data={"work_order_id": "WO-DUPLICATE"},

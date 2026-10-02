@@ -3,6 +3,7 @@
 Follows Section 10 of AGENT.md:
 - Renders deterministic operational metrics: Overall OEE, Availability, Active Alerts, Critical Assets, Open Work Orders, Pending Approvals
 - Semantic color coding and delta percentages
+- Clean typography and theme CSS variable compatibility
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ def render_kpi_row(kpis: Dict[str, Any]) -> None:
             <div class="ind-card">
                 <div class="metric-label">Overall OEE</div>
                 <div class="metric-value">{oee_pct:.1f}%</div>
-                <div class="metric-delta" style="color: {'#10b981' if oee_pct >= 85 else '#f59e0b'};">
+                <div class="metric-delta" style="color: {'#16a34a' if oee_pct >= 85 else '#d97706'}; font-weight: 600;">
                     Target: 85.0%
                 </div>
             </div>
@@ -42,7 +43,7 @@ def render_kpi_row(kpis: Dict[str, Any]) -> None:
             <div class="ind-card">
                 <div class="metric-label">Availability</div>
                 <div class="metric-value">{avail_pct:.1f}%</div>
-                <div class="metric-delta" style="color: {'#10b981' if avail_pct >= 90 else '#ef4444'};">
+                <div class="metric-delta" style="color: {'#16a34a' if avail_pct >= 90 else '#dc2626'}; font-weight: 600;">
                     Target: 92.0%
                 </div>
             </div>
@@ -51,13 +52,13 @@ def render_kpi_row(kpis: Dict[str, Any]) -> None:
         )
 
     with c3:
-        alert_color = "#ef4444" if alerts_cnt > 0 else "#10b981"
+        alert_color = "#dc2626" if alerts_cnt > 0 else "#16a34a"
         st.markdown(
             f"""
             <div class="ind-card">
                 <div class="metric-label">Active Alerts</div>
                 <div class="metric-value" style="color: {alert_color};">{alerts_cnt}</div>
-                <div class="metric-delta" style="color: #94a3b8;">
+                <div class="metric-delta" style="color: var(--text-muted);">
                     {'Action required' if alerts_cnt > 0 else 'All assets nominal'}
                 </div>
             </div>
@@ -66,13 +67,13 @@ def render_kpi_row(kpis: Dict[str, Any]) -> None:
         )
 
     with c4:
-        crit_color = "#ef4444" if crit_cnt > 0 else "#10b981"
+        crit_color = "#dc2626" if crit_cnt > 0 else "#16a34a"
         st.markdown(
             f"""
             <div class="ind-card">
                 <div class="metric-label">Critical Assets</div>
                 <div class="metric-value" style="color: {crit_color};">{crit_cnt}</div>
-                <div class="metric-delta" style="color: #94a3b8;">
+                <div class="metric-delta" style="color: var(--text-muted);">
                     {'M204 At-Risk' if crit_cnt > 0 else '0 at risk'}
                 </div>
             </div>
@@ -86,7 +87,7 @@ def render_kpi_row(kpis: Dict[str, Any]) -> None:
             <div class="ind-card">
                 <div class="metric-label">Open Work Orders</div>
                 <div class="metric-value">{wo_cnt}</div>
-                <div class="metric-delta" style="color: #38bdf8;">
+                <div class="metric-delta" style="color: var(--primary-accent); font-weight: 600;">
                     CMMS Dispatched
                 </div>
             </div>
@@ -95,13 +96,13 @@ def render_kpi_row(kpis: Dict[str, Any]) -> None:
         )
 
     with c6:
-        app_color = "#f59e0b" if app_cnt > 0 else "#94a3b8"
+        app_color = "#d97706" if app_cnt > 0 else "var(--text-muted)"
         st.markdown(
             f"""
             <div class="ind-card">
                 <div class="metric-label">Pending Approvals</div>
                 <div class="metric-value" style="color: {app_color};">{app_cnt}</div>
-                <div class="metric-delta" style="color: {'#f59e0b' if app_cnt > 0 else '#94a3b8'};">
+                <div class="metric-delta" style="color: {'#d97706' if app_cnt > 0 else 'var(--text-muted)'}; font-weight: 600;">
                     {'Human Review Req.' if app_cnt > 0 else 'None pending'}
                 </div>
             </div>

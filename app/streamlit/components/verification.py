@@ -5,6 +5,7 @@ Follows Sections 26 & 27 of AGENT.md:
 - Distinctly displays VERIFIED vs FAILED outcomes calculated by VerificationService
 - Never displays SUCCESS when verification failed
 - Exposes interactive controls to run nominal verification or simulate failed maintenance
+- Theme-aware styling and zero emojis
 """
 
 from __future__ import annotations
@@ -24,8 +25,8 @@ def render_verification_panel(
     """Render the closed-loop verification results and before/after metrics table."""
     st.markdown(
         """
-        <div style="font-size: 14px; font-weight: 700; color: #f8fafc; text-transform: uppercase; margin-bottom: 8px;">
-            🔬 Closed-Loop Physical Verification
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">
+            Closed-Loop Physical Verification
         </div>
         """,
         unsafe_allow_html=True,
@@ -37,18 +38,18 @@ def render_verification_panel(
 
     # Trigger control if work order is completed or verified
     if work_order.status.value in ("COMPLETED", "VERIFIED") or verification is not None:
-        with st.expander("⚡ Run Verification Evaluation", expanded=(verification is None)):
+        with st.expander("Run Verification Evaluation", expanded=(verification is None)):
             st.caption("Ingest post-maintenance telemetry from restarted equipment and evaluate against VerificationPolicy:")
             verifier_id = st.text_input("Lead Reliability Engineer / Verifier ID:", value="lead.engineer.david", key="verifier_id_input")
 
             col_v1, col_v2 = st.columns(2)
             with col_v1:
-                if st.button("🟢 Ingest Telemetry & Run Verification", type="primary", use_container_width=True):
+                if st.button("Ingest Telemetry & Run Verification", type="primary", use_container_width=True):
                     on_run_verification(work_order.work_order_id, verifier_id, False)
                     st.session_state.last_action_message = "Post-maintenance telemetry verified successfully."
                     st.rerun()
             with col_v2:
-                if st.button("⚠️ Simulate Improper Repair (Fail Path)", type="secondary", use_container_width=True, help="Simulate wrong bearing / high vibration persisting"):
+                if st.button("Simulate Improper Repair (Fail Path)", type="secondary", use_container_width=True, help="Simulate wrong bearing / high vibration persisting"):
                     on_run_verification(work_order.work_order_id, verifier_id, True)
                     st.session_state.last_action_message = "Post-maintenance verification failed: signals abnormal."
                     st.rerun()
@@ -65,13 +66,13 @@ def render_verification_panel(
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <span class="badge badge-healthy">PHYSICAL VERIFICATION PASSED</span>
-                        <span style="font-size: 12px; color: #94a3b8; margin-left: 8px;">ID: <code>{verification.verification_id}</code></span>
+                        <span style="font-size: 12px; color: var(--text-muted); margin-left: 8px;">ID: <code>{verification.verification_id}</code></span>
                     </div>
-                    <div style="font-size: 11px; color: #34d399;">
+                    <div style="font-size: 11px; color: #16a34a; font-weight: 600;">
                         Status: <b>VERIFIED (100% Deterministic)</b>
                     </div>
                 </div>
-                <div style="font-size: 13px; color: #f1f5f9; margin-top: 8px;">
+                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">
                     <b>Evaluation:</b> {verification.verification_reason}
                 </div>
             </div>
@@ -86,16 +87,16 @@ def render_verification_panel(
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <span class="badge badge-critical">VERIFICATION FAILED</span>
-                        <span style="font-size: 12px; color: #fca5a5; margin-left: 8px;">ID: <code>{verification.verification_id}</code></span>
+                        <span style="font-size: 12px; color: #dc2626; margin-left: 8px;">ID: <code>{verification.verification_id}</code></span>
                     </div>
-                    <div style="font-size: 11px; color: #ef4444;">
+                    <div style="font-size: 11px; color: #dc2626; font-weight: 600;">
                         Status: <b>MACHINE RECOVERY NOT CONFIRMED</b>
                     </div>
                 </div>
-                <div style="font-size: 13px; color: #fecaca; margin-top: 8px;">
+                <div style="font-size: 13px; color: #dc2626; margin-top: 8px;">
                     <b>Finding:</b> {verification.verification_reason}
                 </div>
-                <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
                     Work order remains <b>COMPLETED</b> (technician signed off, but telemetry failed). Investigation remains <b>OPEN</b> for follow-up root cause analysis.
                 </div>
             </div>
@@ -104,7 +105,7 @@ def render_verification_panel(
         )
 
     # Before / After Metrics Comparison Table
-    st.markdown("<div style='font-size: 12px; font-weight: 700; color: #cbd5e1; margin-top: 14px; margin-bottom: 6px;'>MEASURED BEFORE & AFTER DELTAS</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 14px; margin-bottom: 6px;'>MEASURED BEFORE & AFTER DELTAS</div>", unsafe_allow_html=True)
 
     vib_delta = verification.post_vibration_rms - verification.pre_vibration_rms
     vib_pct = (vib_delta / max(verification.pre_vibration_rms, 0.0001)) * 100

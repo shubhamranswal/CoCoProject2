@@ -5,6 +5,7 @@ Follows Section 11 of AGENT.md:
 - Shows physical telemetry (Vibration RMS, Temperature, Failure Risk, OEE Impact)
 - Exposes direct links to Investigation, Evidence, Recommendation, and Approval
 - Never exposes unguided "Execute" directly on the alert card
+- Clean industrial typography, dynamic theme compatibility, and zero emojis
 """
 
 from __future__ import annotations
@@ -77,48 +78,48 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
         f'<div>'
         f'<span class="badge badge-critical">{severity_val}</span>'
         f'<span class="badge badge-neutral" style="margin-left: 6px;">{line_id}</span>'
-        f'<span class="badge" style="background: #1e3a8a; color: #93c5fd; margin-left: 6px; font-size: 10px;">RULE / SIGNAL</span>'
-        f'<span class="badge" style="background: #4c1d95; color: #c4b5fd; margin-left: 6px; font-size: 10px;">MODEL PREDICTION</span>'
-        f'<span class="badge" style="background: #064e3b; color: #6ee7b7; margin-left: 6px; font-size: 10px;">AGENT FINDING</span>'
-        f'<div style="font-size: 20px; font-weight: 800; color: #f8fafc; margin-top: 8px;">'
+        f'<span class="badge badge-info" style="margin-left: 6px; font-size: 10px;">RULE / SIGNAL</span>'
+        f'<span class="badge badge-warning" style="margin-left: 6px; font-size: 10px;">MODEL PREDICTION</span>'
+        f'<span class="badge badge-healthy" style="margin-left: 6px; font-size: 10px;">AGENT FINDING</span>'
+        f'<div style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 8px;">'
         f'{mach_id} — {mach_name}'
         f'</div>'
-        f'<div style="font-size: 13px; font-weight: 700; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.05em;">'
-        f'{failure_mode_val} &nbsp;•&nbsp; <span style="color: #94a3b8; font-weight: 400; text-transform: none;">Evidence: {evidence_count}</span>'
+        f'<div style="font-size: 12px; font-weight: 600; color: #dc2626; text-transform: uppercase; letter-spacing: 0.04em;">'
+        f'{failure_mode_val} &nbsp;•&nbsp; <span style="color: var(--text-muted); font-weight: 400; text-transform: none;">Evidence: {evidence_count}</span>'
         f'</div>'
         f'</div>'
         f'<div style="text-align: right; display: flex; gap: 20px;">'
         f'<div>'
-        f'<div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Deterministic Risk</div>'
-        f'<div style="font-size: 28px; font-weight: 800; color: #fbbf24; line-height: 1.1;">{det_risk_display}</div>'
-        f'<div style="font-size: 10px; color: #cbd5e1;">Rule Score</div>'
+        f'<div style="font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Deterministic Risk</div>'
+        f'<div style="font-size: 26px; font-weight: 700; color: #d97706; line-height: 1.1;">{det_risk_display}</div>'
+        f'<div style="font-size: 10px; color: var(--text-secondary);">Rule Score</div>'
         f'</div>'
         f'<div>'
-        f'<div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">ML Failure Prob</div>'
-        f'<div style="font-size: 28px; font-weight: 800; color: #ef4444; line-height: 1.1;">{ml_prob_display}</div>'
-        f'<div style="font-size: 10px; color: #fca5a5;">Horizon: {horizon_str} ({model_name})</div>'
+        f'<div style="font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">ML Failure Prob</div>'
+        f'<div style="font-size: 26px; font-weight: 700; color: #dc2626; line-height: 1.1;">{ml_prob_display}</div>'
+        f'<div style="font-size: 10px; color: #dc2626;">Horizon: {horizon_str} ({model_name})</div>'
         f'</div>'
         f'</div>'
         f'</div>'
-        f'<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; padding: 10px 14px; background: rgba(0,0,0,0.25); border-radius: 4px; border: 1px solid rgba(255,255,255,0.06);">'
+        f'<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; padding: 10px 14px; background: var(--box-subtle-bg); border-radius: 6px; border: 1px solid var(--border-subtle);">'
         f'<div>'
-        f'<div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Vibration RMS</div>'
-        f'<div style="font-size: 16px; font-weight: 700; color: #f8fafc;">{vib_display}</div>'
-        f'<div style="font-size: 10px; color: #ef4444;">{vib_delta_display}</div>'
-        f'</div>'
-        f'<div>'
-        f'<div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Bearing Temp</div>'
-        f'<div style="font-size: 16px; font-weight: 700; color: #f8fafc;">{temp_display}</div>'
-        f'<div style="font-size: 10px; color: #ef4444;">{temp_delta_display}</div>'
+        f'<div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Vibration RMS</div>'
+        f'<div style="font-size: 15px; font-weight: 700; color: var(--text-primary);">{vib_display}</div>'
+        f'<div style="font-size: 10px; color: #dc2626;">{vib_delta_display}</div>'
         f'</div>'
         f'<div>'
-        f'<div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Operational OEE</div>'
-        f'<div style="font-size: 16px; font-weight: 700; color: #f8fafc;">{oee_display}</div>'
-        f'<div style="font-size: 10px; color: #ef4444;">{oee_delta_display}</div>'
+        f'<div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Bearing Temp</div>'
+        f'<div style="font-size: 15px; font-weight: 700; color: var(--text-primary);">{temp_display}</div>'
+        f'<div style="font-size: 10px; color: #dc2626;">{temp_delta_display}</div>'
         f'</div>'
         f'<div>'
-        f'<div style="font-size: 10px; color: #94a3b8; text-transform: uppercase;">Status</div>'
-        f'<div style="font-size: 13px; font-weight: 700; color: #fbbf24;">{status_desc}</div>'
+        f'<div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Operational OEE</div>'
+        f'<div style="font-size: 15px; font-weight: 700; color: var(--text-primary);">{oee_display}</div>'
+        f'<div style="font-size: 10px; color: #dc2626;">{oee_delta_display}</div>'
+        f'</div>'
+        f'<div>'
+        f'<div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Status</div>'
+        f'<div style="font-size: 13px; font-weight: 700; color: #d97706;">{status_desc}</div>'
         f'</div>'
         f'</div>'
         f'</div>'
@@ -129,26 +130,26 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
     st.markdown('<div class="hero-action-toolbar">', unsafe_allow_html=True)
     b_col1, b_col2, b_col3, b_col4 = st.columns(4)
     with b_col1:
-        if st.button("🔍 Open Investigation", key=f"open_inv_{mach_id}", type="primary", use_container_width=True):
+        if st.button("Open Investigation", key=f"open_inv_{mach_id}", type="primary", use_container_width=True):
             inv_id = inv.investigation_id if inv else f"INV-{mach_id}"
             navigate_to("AI Investigations", machine_id=mach_id, investigation_id=inv_id)
             st.rerun()
 
     with b_col2:
-        if st.button("📊 Review Evidence", key=f"rev_ev_{mach_id}", use_container_width=True):
+        if st.button("Review Evidence", key=f"rev_ev_{mach_id}", use_container_width=True):
             inv_id = inv.investigation_id if inv else f"INV-{mach_id}"
             navigate_to("AI Investigations", machine_id=mach_id, investigation_id=inv_id)
             st.rerun()
 
     with b_col3:
-        if st.button("📋 Review Recommendation", key=f"rev_rec_{mach_id}", use_container_width=True):
+        if st.button("Review Recommendation", key=f"rev_rec_{mach_id}", use_container_width=True):
             inv_id = inv.investigation_id if inv else f"INV-{mach_id}"
             navigate_to("AI Investigations", machine_id=mach_id, investigation_id=inv_id)
             st.rerun()
 
     with b_col4:
         app_disabled = (app is None or app.status != ApprovalStatus.PENDING)
-        btn_label = "✅ Review Approval" if not app_disabled else "⚖️ Governance Gate"
+        btn_label = "Review Approval" if not app_disabled else "Governance Gate"
         if st.button(btn_label, key=f"rev_app_{mach_id}", disabled=app_disabled, use_container_width=True):
             inv_id = inv.investigation_id if inv else f"INV-{mach_id}"
             navigate_to("AI Investigations", machine_id=mach_id, investigation_id=inv_id)
@@ -165,16 +166,16 @@ def render_alert_card(alert: Any) -> None:
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
                     <span class="badge {sev_badge}">{alert.severity.value}</span>
-                    <span style="font-size: 13px; font-weight: 700; color: #f8fafc; margin-left: 8px;">{alert.machine_id}</span>
+                    <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-left: 8px;">{alert.machine_id}</span>
                 </div>
-                <div style="font-size: 11px; color: #94a3b8;">
+                <div style="font-size: 11px; color: var(--text-muted);">
                     {alert.alert_id}
                 </div>
             </div>
-            <div style="font-size: 12px; color: #cbd5e1; margin-top: 6px;">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 6px;">
                 {alert.trigger_reason}
             </div>
-            <div style="font-size: 11px; color: #fca5a5; margin-top: 4px;">
+            <div style="font-size: 11px; color: #dc2626; margin-top: 4px;">
                 Risk Score: <b>{alert.risk_score * 100:.0f}%</b> | Mode: <b>{alert.failure_mode.value}</b>
             </div>
         </div>

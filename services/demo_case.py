@@ -146,7 +146,7 @@ def run_m204_reliability_case() -> Dict[str, Any]:
     print(f"  * Approval Status          : {approval_request.status.value} (Awaiting human review)")
 
     # Human operator review
-    approver = "operator.sarah"
+    approver = "operator.shubham"
     decision_reason = "Confirmed severe 2X harmonic vibration signature and overheating. Authorized bearing replacement before night shift."
     print(f"\n[STEP 4] Human Operator Review...")
     print(f"  * Reviewer     : {approver}")

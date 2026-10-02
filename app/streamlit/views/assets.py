@@ -6,6 +6,7 @@ Follows Sections 12, 13, 14, & 15 of AGENT.md:
 - Telemetry trend charts (Vibration RMS, RTD Temperature)
 - Synchronized 3-Signal Correlation View (Vibration + Temperature + Risk)
 - Subassembly components, calibrated sensors, anomalies, and maintenance history
+- Theme CSS variable styling and zero emojis
 """
 
 from __future__ import annotations
@@ -64,25 +65,25 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
 
     st.markdown(
         f"""
-        <div class="ind-card" style="border-left: 4px solid {'#ef4444' if mach.health_status == HealthStatus.CRITICAL else '#10b981'};">
+        <div class="ind-card" style="border-left: 4px solid {'#dc2626' if mach.health_status == HealthStatus.CRITICAL else '#16a34a'};">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                 <div>
                     {health_badge}
                     <span class="badge badge-neutral" style="margin-left: 6px;">{mach.line_id}</span>
                     <span class="badge badge-info" style="margin-left: 6px;">STATE: {mach.state.value}</span>
-                    <div style="font-size: 20px; font-weight: 800; color: #f8fafc; margin-top: 6px;">
+                    <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
                         {mach.machine_id} — {mach.name}
                     </div>
-                    <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
                         Model: <b>{mach.model}</b> &nbsp;|&nbsp; Manufacturer: <b>{mach.manufacturer}</b> &nbsp;|&nbsp; Serial: <code>{mach.serial_number}</code>
                     </div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="font-size: 11px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Failure Risk Score</div>
-                    <div style="font-size: 28px; font-weight: 800; color: {'#ef4444' if risk_score > 70 else '#10b981'}; line-height: 1;">
+                    <div style="font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Failure Risk Score</div>
+                    <div style="font-size: 26px; font-weight: 700; color: {'#dc2626' if risk_score > 70 else '#16a34a'}; line-height: 1;">
                         {risk_score:.0f}%
                     </div>
-                    <div style="font-size: 11px; color: #94a3b8;">Criticality: {mach.criticality}</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">Criticality: {mach.criticality}</div>
                 </div>
             </div>
         </div>
@@ -94,10 +95,10 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
     telemetry_data = facade.get_telemetry_history(cur_mach_id)
 
     tab_charts, tab_corr, tab_comp, tab_maint = st.tabs([
-        "📈 Telemetry Trends",
-        "🔬 Signal Correlation (Vib + Temp + Risk)",
-        "🔩 Components & Sensors",
-        "🛠️ Maintenance & Failure History",
+        "Telemetry Trends",
+        "Signal Correlation (Vib + Temp + Risk)",
+        "Components & Sensors",
+        "Maintenance & Failure History",
     ])
 
     with tab_charts:

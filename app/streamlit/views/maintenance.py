@@ -4,6 +4,7 @@ Follows Section 25, 26, & 27 of AGENT.md:
 - Real maintenance event logs and technician work records
 - Replaced subassemblies, consumables, and labor hours
 - Precedent failure mode history for reliability correlation
+- Theme CSS variable styling and zero emojis
 """
 
 from __future__ import annotations
@@ -20,10 +21,10 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
     st.markdown(
         """
         <div style="margin-bottom: 16px;">
-            <div style="font-size: 20px; font-weight: 800; color: #f8fafc; letter-spacing: -0.02em;">
+            <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em;">
                 MAINTENANCE RECORDS & EXECUTION LOGS
             </div>
-            <div style="font-size: 12px; color: #94a3b8;">
+            <div style="font-size: 12px; color: var(--text-muted);">
                 Historical maintenance events, technician execution logs, and component replacement records.
             </div>
         </div>
@@ -42,10 +43,10 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
     with col1:
         st.markdown(
             f"""
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Recorded Maintenance Events</div>
-                <div style="font-size: 26px; font-weight: 800; color: #38bdf8; margin: 4px 0;">{len(all_events)}</div>
-                <div style="font-size: 11px; color: #94a3b8;">Plant-01 Total History</div>
+            <div class="ind-card">
+                <div class="metric-label">Recorded Maintenance Events</div>
+                <div class="metric-value" style="color: var(--primary-accent);">{len(all_events)}</div>
+                <div class="metric-delta" style="color: var(--text-muted);">Plant-01 Total History</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -55,10 +56,10 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
         total_downtime = sum((e.duration_hours or 0.0) * 60.0 for e in all_events)
         st.markdown(
             f"""
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Cumulative Maintenance Downtime</div>
-                <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin: 4px 0;">{total_downtime:.0f} min</div>
-                <div style="font-size: 11px; color: #94a3b8;">Planned + Corrective Intervention</div>
+            <div class="ind-card">
+                <div class="metric-label">Cumulative Maintenance Downtime</div>
+                <div class="metric-value">{total_downtime:.0f} min</div>
+                <div class="metric-delta" style="color: var(--text-muted);">Planned + Corrective Intervention</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -68,10 +69,10 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
         total_cost = sum((e.duration_hours or 0.0) * 85.0 for e in all_events)
         st.markdown(
             f"""
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Recorded Parts & Labor Cost</div>
-                <div style="font-size: 26px; font-weight: 800; color: #22c55e; margin: 4px 0;">${total_cost:,.2f}</div>
-                <div style="font-size: 11px; color: #94a3b8;">Verified CMMS Invoices</div>
+            <div class="ind-card">
+                <div class="metric-label">Recorded Parts & Labor Cost</div>
+                <div class="metric-value" style="color: #16a34a;">${total_cost:,.2f}</div>
+                <div class="metric-delta" style="color: var(--text-muted);">Verified CMMS Invoices</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -80,22 +81,22 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
     with col4:
         st.markdown(
             """
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Work Order Execution Surface</div>
-                <div style="font-size: 14px; font-weight: 800; color: #38bdf8; margin: 6px 0;">ACTIVE DISPATCH</div>
-                <div style="font-size: 11px; color: #94a3b8;">Ready for Tech Execution</div>
+            <div class="ind-card">
+                <div class="metric-label">Work Order Execution Surface</div>
+                <div class="metric-value" style="font-size: 16px; color: var(--primary-accent);">ACTIVE DISPATCH</div>
+                <div class="metric-delta" style="color: var(--text-muted);">Ready for Tech Execution</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 18px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
     # 2. Historical Maintenance Log Table
     st.markdown(
         """
-        <div style="font-size: 14px; font-weight: 800; color: #f8fafc; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
-            🛠️ Historical Maintenance Events Log
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
+            Historical Maintenance Events Log
         </div>
         """,
         unsafe_allow_html=True,
@@ -119,21 +120,20 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
             })
         st.dataframe(rows, use_container_width=True, hide_index=True)
 
-
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 18px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
     # 3. Quick Action: Switch to Work Orders
     col_act1, col_act2 = st.columns([3, 1])
     with col_act1:
         st.markdown(
             """
-            <div style="font-size: 13px; color: #94a3b8;">
+            <div style="font-size: 13px; color: var(--text-muted);">
                 To execute pending work orders, record technician progress, or run closed-loop physical verification, navigate to the Work Orders view.
             </div>
             """,
             unsafe_allow_html=True,
         )
     with col_act2:
-        if st.button("Open Work Orders Manager →", use_container_width=True):
+        if st.button("Open Work Orders Manager", use_container_width=True):
             navigate_to("Work Orders")
             st.rerun()

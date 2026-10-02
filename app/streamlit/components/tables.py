@@ -5,6 +5,7 @@ Follows Sections 12 & 30 of AGENT.md:
 - Work order inventory table
 - Maintenance history table
 - Clear semantic status indicators with 1-click navigation
+- Clean industrial typography, theme CSS variables, and zero emojis
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ def render_asset_grid_table(
     """Render the high information density asset health table."""
     st.markdown(
         """
-        <div style="font-size: 13px; font-weight: 700; color: #f8fafc; text-transform: uppercase; margin-bottom: 8px;">
-            🏭 Fleet Asset Health Status
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">
+            Fleet Asset Health Status
         </div>
         """,
         unsafe_allow_html=True,
@@ -40,7 +41,7 @@ def render_asset_grid_table(
     h6.caption("**ALERTS**")
     h7.caption("**ACTION**")
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 4px 0 8px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 4px 0 8px 0;'/>", unsafe_allow_html=True)
 
     for item in asset_grid:
         m = item["machine"]
@@ -58,14 +59,14 @@ def render_asset_grid_table(
             h_badge = "<span class='badge badge-healthy'>HEALTHY</span>"
 
         risk_val = f"{risk.risk_score * 100:.0f}%" if risk else "--"
-        risk_color = "#ef4444" if (risk and risk.risk_score > 0.7) else ("#f59e0b" if (risk and risk.risk_score > 0.4) else "#10b981")
+        risk_color = "#dc2626" if (risk and risk.risk_score > 0.7) else ("#d97706" if (risk and risk.risk_score > 0.4) else "#16a34a")
 
         c1.markdown(f"<div style='padding-top: 7px;'><b><code>{m.machine_id}</code></b></div>", unsafe_allow_html=True)
         c2.markdown(f"<div style='padding-top: 7px; font-weight: 500;'>{m.name}</div>", unsafe_allow_html=True)
         c3.markdown(f"<div style='padding-top: 7px;'><code>{m.line_id}</code></div>", unsafe_allow_html=True)
         c4.markdown(f"<div style='padding-top: 7px;'>{h_badge}</div>", unsafe_allow_html=True)
         c5.markdown(f"<div style='padding-top: 7px; color: {risk_color}; font-weight: 700;'>{risk_val}</div>", unsafe_allow_html=True)
-        c6.markdown(f"<div style='padding-top: 7px;'>{alerts_cnt} active</div>" if alerts_cnt > 0 else "<div style='padding-top: 7px; color: #64748b;'>0</div>", unsafe_allow_html=True)
+        c6.markdown(f"<div style='padding-top: 7px;'>{alerts_cnt} active</div>" if alerts_cnt > 0 else "<div style='padding-top: 7px; color: var(--text-muted);'>0</div>", unsafe_allow_html=True)
 
         with c7:
             if st.button("Inspect", key=f"inspect_{m.machine_id}", use_container_width=True):
@@ -73,7 +74,7 @@ def render_asset_grid_table(
                 navigate_to("Assets", machine_id=m.machine_id)
                 st.rerun()
 
-        st.markdown("<hr style='border: none; border-bottom: 1px solid #171b24; margin: 2px 0;'/>", unsafe_allow_html=True)
+        st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 2px 0;'/>", unsafe_allow_html=True)
 
 
 def render_work_orders_table(
@@ -94,7 +95,7 @@ def render_work_orders_table(
     h6.caption("**ASSIGNED**")
     h7.caption("**ACTION**")
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 4px 0 8px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 4px 0 8px 0;'/>", unsafe_allow_html=True)
 
     for wo in work_orders:
         c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 1.2, 2.5, 1.2, 1.2, 1.5, 1.2])
@@ -113,4 +114,4 @@ def render_work_orders_table(
                 navigate_to("Work Orders", work_order_id=wo.work_order_id)
                 st.rerun()
 
-        st.markdown("<hr style='border: none; border-bottom: 1px solid #171b24; margin: 2px 0;'/>", unsafe_allow_html=True)
+        st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 2px 0;'/>", unsafe_allow_html=True)

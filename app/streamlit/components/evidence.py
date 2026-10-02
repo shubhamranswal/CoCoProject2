@@ -4,6 +4,7 @@ Follows Section 18 of AGENT.md:
 - Groups evidence: Telemetry, Anomalies, Failure History, Maintenance, OEE, Machine Documentation
 - Renders typed facts: source, observed value, baseline value, delta %, and SUPPORTS / CONTRADICTORY badge
 - Evidence-first transparency rather than opaque AI assertions
+- Zero emojis and theme variable styling
 """
 
 from __future__ import annotations
@@ -27,22 +28,22 @@ def render_evidence_panel(evidence_list: List[Evidence]) -> None:
         groups.setdefault(ev_type, []).append(ev)
 
     category_labels = {
-        "TELEMETRY": "📡 Physical Sensor Telemetry",
-        "ANOMALY": "⚠️ Statistical Anomalies",
-        "FAILURE": "📜 Historical Failure Patterns",
-        "MAINTENANCE": "🛠️ Recent Maintenance Records",
-        "OEE": "📊 Production & OEE Impact",
-        "DOCUMENT": "📖 Technical Manual & Service Limits",
-        "GENERAL": "🔍 General Observations",
+        "TELEMETRY": "Physical Sensor Telemetry",
+        "ANOMALY": "Statistical Anomalies",
+        "FAILURE": "Historical Failure Patterns",
+        "MAINTENANCE": "Recent Maintenance Records",
+        "OEE": "Production & OEE Impact",
+        "DOCUMENT": "Technical Manual & Service Limits",
+        "GENERAL": "General Observations",
     }
 
     st.markdown(
         f"""
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div style="font-size: 14px; font-weight: 700; color: #f8fafc; text-transform: uppercase;">
+            <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em;">
                 Collected Evidence Repository ({len(evidence_list)} Items)
             </div>
-            <div style="font-size: 11px; color: #94a3b8;">
+            <div style="font-size: 11px; color: var(--text-muted);">
                 Typed audit records correlated by Reliability Agent
             </div>
         </div>
@@ -71,15 +72,15 @@ def render_evidence_panel(evidence_list: List[Evidence]) -> None:
                     <div class="evidence-box">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                             <div>
-                                <span style="font-size: 11px; font-weight: 700; color: #38bdf8;">[{item.evidence_id}]</span>
-                                <span style="font-size: 12px; font-weight: 600; color: #f1f5f9; margin-left: 6px;">{item.metric or item.source}</span>
+                                <span style="font-size: 11px; font-weight: 700; color: var(--primary-accent);">[{item.evidence_id}]</span>
+                                <span style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-left: 6px;">{item.metric or item.source}</span>
                             </div>
                             <div>{badge_html}</div>
                         </div>
-                        <div style="font-size: 12px; color: #cbd5e1; margin-bottom: 4px;">
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">
                             {item.summary or item.observed_fact}
                         </div>
-                        <div style="font-size: 11px; color: #94a3b8;">
+                        <div style="font-size: 11px; color: var(--text-muted);">
                             Source: <code>{item.source}</code> &nbsp;|&nbsp; {observed_str}{baseline_str}
                         </div>
                     </div>

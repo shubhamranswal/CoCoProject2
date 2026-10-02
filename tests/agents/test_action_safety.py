@@ -123,14 +123,14 @@ def test_expired_approval_rejected(test_setup):
         investigation_id="INV-004",
         machine_id="M204",
         status=ApprovalStatus.APPROVED,
-        decision_by="operator.sarah",
+        decision_by="operator.shubham",
         expires_at=past,
     )
     repo._approvals[app.approval_id] = app
 
     with pytest.raises(ValueError) as exc:
         action_tool.execute(
-            caller_actor="operator.sarah",
+            caller_actor="operator.shubham",
             approval_id=app.approval_id,
             machine_id="M204",
             component_id="COMP-M204-BRG-DE",

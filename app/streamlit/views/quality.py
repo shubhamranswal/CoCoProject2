@@ -4,6 +4,7 @@ Follows Section 7 & 12 of AGENT.md:
 - Telemetry stream data quality and completeness
 - Active sensor anomalies (Z-Score outliers, dual-signal deviations)
 - Sensor calibration range validation and sampling frequency compliance
+- Theme CSS variable styling and zero emojis
 """
 
 from __future__ import annotations
@@ -20,10 +21,10 @@ def render_quality_view(facade: CommandCenterFacade) -> None:
     st.markdown(
         """
         <div style="margin-bottom: 16px;">
-            <div style="font-size: 20px; font-weight: 800; color: #f8fafc; letter-spacing: -0.02em;">
+            <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em;">
                 TELEMETRY & SENSOR DATA QUALITY
             </div>
-            <div style="font-size: 12px; color: #94a3b8;">
+            <div style="font-size: 12px; color: var(--text-muted);">
                 Real-time validation of sensor streams, sampling compliance, and active telemetry anomalies.
             </div>
         </div>
@@ -39,10 +40,10 @@ def render_quality_view(facade: CommandCenterFacade) -> None:
     with col1:
         st.markdown(
             """
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Stream Quality Index</div>
-                <div style="font-size: 26px; font-weight: 800; color: #22c55e; margin: 4px 0;">99.82%</div>
-                <div style="font-size: 11px; color: #94a3b8;">Target: >99.50% Compliance</div>
+            <div class="ind-card">
+                <div class="metric-label">Stream Quality Index</div>
+                <div class="metric-value" style="color: #16a34a;">99.82%</div>
+                <div class="metric-delta" style="color: var(--text-muted);">Target: >99.50% Compliance</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -51,10 +52,10 @@ def render_quality_view(facade: CommandCenterFacade) -> None:
     with col2:
         st.markdown(
             f"""
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Active Sensor Anomalies</div>
-                <div style="font-size: 26px; font-weight: 800; color: {'#ef4444' if len(active_anomalies) > 0 else '#22c55e'}; margin: 4px 0;">{len(active_anomalies)}</div>
-                <div style="font-size: 11px; color: #94a3b8;">Z-Score & Dual-Signal Outliers</div>
+            <div class="ind-card">
+                <div class="metric-label">Active Sensor Anomalies</div>
+                <div class="metric-value" style="color: {'#dc2626' if len(active_anomalies) > 0 else '#16a34a'};">{len(active_anomalies)}</div>
+                <div class="metric-delta" style="color: var(--text-muted);">Z-Score & Dual-Signal Outliers</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -63,10 +64,10 @@ def render_quality_view(facade: CommandCenterFacade) -> None:
     with col3:
         st.markdown(
             """
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Packet Drop Rate</div>
-                <div style="font-size: 26px; font-weight: 800; color: #38bdf8; margin: 4px 0;">0.04%</div>
-                <div style="font-size: 11px; color: #94a3b8;">MQTT Industrial Bus Ingestion</div>
+            <div class="ind-card">
+                <div class="metric-label">Packet Drop Rate</div>
+                <div class="metric-value" style="color: var(--primary-accent);">0.04%</div>
+                <div class="metric-delta" style="color: var(--text-muted);">MQTT Industrial Bus Ingestion</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -75,22 +76,22 @@ def render_quality_view(facade: CommandCenterFacade) -> None:
     with col4:
         st.markdown(
             """
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Monitored Channels</div>
-                <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin: 4px 0;">18 / 18</div>
-                <div style="font-size: 11px; color: #22c55e;">100% Calibrated & Online</div>
+            <div class="ind-card">
+                <div class="metric-label">Monitored Channels</div>
+                <div class="metric-value">18 / 18</div>
+                <div class="metric-delta" style="color: #16a34a; font-weight: 600;">100% Calibrated & Online</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 18px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
     # 2. Active Sensor Anomalies Table
     st.markdown(
         """
-        <div style="font-size: 14px; font-weight: 800; color: #f8fafc; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
-            ⚠️ Active Sensor Anomalies & Telemetry Deviations
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
+            Active Sensor Anomalies & Telemetry Deviations
         </div>
         """,
         unsafe_allow_html=True,
@@ -114,13 +115,13 @@ def render_quality_view(facade: CommandCenterFacade) -> None:
             })
         st.dataframe(rows, use_container_width=True, hide_index=True)
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 18px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
     # 3. Sensor Catalog & Calibration Specifications
     st.markdown(
         """
-        <div style="font-size: 14px; font-weight: 800; color: #f8fafc; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
-            📡 Plant Telemetry Sensors & Calibration Specs
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
+            Plant Telemetry Sensors & Calibration Specs
         </div>
         """,
         unsafe_allow_html=True,

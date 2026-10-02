@@ -1,10 +1,12 @@
 """Global Sidebar Navigation and Demo Controls Component.
 
 Follows Section 7 & 42 of AGENT.md:
-- Structured hierarchical navigation
+- Structured hierarchical navigation with clear active-state treatment
+- Default theme: Light mode with active toggle to switch between Light and Dark
 - Plant & Line filtering
 - Real backend badge (Snowflake vs In-Memory Demo)
 - Explicit, isolated Developer/Demo controls
+- Zero emojis across navigation and controls
 """
 
 from __future__ import annotations
@@ -23,21 +25,6 @@ NAV_STRUCTURE = {
     "SYSTEM": ["Data & Pipelines", "Settings"],
 }
 
-NAV_ICONS = {
-    "Command Center": "🧭",
-    "Assets": "⚙️",
-    "Reliability": "📈",
-    "OEE": "📊",
-    "Quality": "🔬",
-    "Maintenance": "🛠️",
-    "Work Orders": "📋",
-    "AI Investigations": "🧠",
-    "Knowledge": "📖",
-    "Agent Activity": "🤖",
-    "Data & Pipelines": "🔀",
-    "Settings": "⚙️",
-}
-
 
 def render_sidebar(
     backend_mode: str,
@@ -48,13 +35,14 @@ def render_sidebar(
 ) -> str:
     """Render the industrial application sidebar."""
     with st.sidebar:
+        # Header / Branding
         st.markdown(
             """
-            <div style="padding: 10px 0 16px 0;">
-                <div style="font-size: 13px; font-weight: 800; color: #38bdf8; letter-spacing: 0.08em; text-transform: uppercase;">
+            <div style="padding: 6px 0 14px 0;">
+                <div style="font-size: 11px; font-weight: 700; color: var(--primary-accent); letter-spacing: 0.08em; text-transform: uppercase;">
                     FACTORY RELIABILITY
                 </div>
-                <div style="font-size: 18px; font-weight: 800; color: #f8fafc; letter-spacing: -0.02em;">
+                <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em;">
                     COMMAND CENTER
                 </div>
             </div>
@@ -62,24 +50,39 @@ def render_sidebar(
             unsafe_allow_html=True,
         )
 
+        # Theme Mode Selector (Default Light with Dark Mode toggle)
+        current_theme = st.session_state.get("theme_mode", "light")
+        theme_options = ["Light", "Dark"]
+        selected_theme = st.radio(
+            "Interface Theme:",
+            options=theme_options,
+            index=0 if current_theme == "light" else 1,
+            horizontal=True,
+            key="sidebar_theme_selector",
+        )
+        if selected_theme.lower() != current_theme:
+            st.session_state.theme_mode = selected_theme.lower()
+            st.rerun()
+
+        st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 12px 0 10px 0;'/>", unsafe_allow_html=True)
+
         current_nav = st.session_state.get("active_nav", "Command Center")
 
         # Navigation Groups
         for section, items in NAV_STRUCTURE.items():
             if section != "MAIN":
                 st.markdown(
-                    f"<div style='font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 0.08em; "
-                    f"margin-top: 14px; margin-bottom: 4px; text-transform: uppercase;'>{section}</div>",
+                    f"<div style='font-size: 10px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.08em; "
+                    f"margin-top: 12px; margin-bottom: 4px; text-transform: uppercase;'>{section}</div>",
                     unsafe_allow_html=True,
                 )
 
             for item in items:
-                icon = NAV_ICONS.get(item, "•")
                 is_selected = (current_nav == item)
                 btn_type = "primary" if is_selected else "secondary"
 
                 if st.button(
-                    f"{icon}  {item}",
+                    item,
                     key=f"nav_btn_{item}",
                     type=btn_type,
                     use_container_width=True,
@@ -87,10 +90,10 @@ def render_sidebar(
                     navigate_to(item)
                     st.rerun()
 
-        st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 16px 0;'/>", unsafe_allow_html=True)
+        st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 14px 0;'/>", unsafe_allow_html=True)
 
         # Plant Context Filter
-        st.markdown("<div style='font-size: 11px; font-weight: 700; color: #94a3b8; margin-bottom: 4px;'>OPERATIONAL SCOPE</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 4px;'>OPERATIONAL SCOPE</div>", unsafe_allow_html=True)
         col_p, col_l = st.columns(2)
         with col_p:
             st.selectbox("Plant:", ["PLANT-01"], index=0, key="plant_selector", disabled=True)
@@ -103,7 +106,7 @@ def render_sidebar(
                 st.rerun()
 
         # Backend Storage Status
-        st.markdown("<div style='font-size: 11px; font-weight: 700; color: #94a3b8; margin-top: 10px; margin-bottom: 4px;'>STORAGE ENGINE</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size: 11px; font-weight: 700; color: var(--text-muted); margin-top: 8px; margin-bottom: 4px;'>STORAGE ENGINE</div>", unsafe_allow_html=True)
         selected_backend = st.radio(
             "Active Storage:",
             options=["in_memory", "snowflake"],
@@ -117,12 +120,22 @@ def render_sidebar(
             st.rerun()
 
         if backend_mode == "snowflake":
-            st.caption("🟢 Connected to Snowflake Gov. Schemas")
+            st.markdown(
+                "<div style='font-size: 11px; color: var(--text-secondary); margin-top: 4px;'>"
+                "<span class='status-dot status-dot-healthy'></span>Connected to Snowflake Gov. Schemas"
+                "</div>",
+                unsafe_allow_html=True,
+            )
         else:
-            st.caption("🔵 Running In-Memory Seeded Store")
+            st.markdown(
+                "<div style='font-size: 11px; color: var(--text-secondary); margin-top: 4px;'>"
+                "<span class='status-dot status-dot-info'></span>Running In-Memory Seeded Store"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
         # Developer / Demo Controls (Isolated)
-        with st.expander("🛠️ Demo Controls", expanded=False):
+        with st.expander("Developer Controls", expanded=False):
             st.caption("Golden Path Developer Controls (Isolated to local store):")
             if st.button("Simulate M204 Degradation", use_container_width=True, help="Trigger bearing wear telemetry"):
                 on_run_degradation()

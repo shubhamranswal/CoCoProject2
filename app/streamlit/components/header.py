@@ -4,6 +4,7 @@ Follows Section 8 of AGENT.md:
 - Plant 01 context
 - Global search field across known domain entities
 - System status and active operator indicator
+- Zero emojis and responsive industrial styling
 """
 
 from __future__ import annotations
@@ -26,15 +27,12 @@ def render_header(
     with col_title:
         st.markdown(
             """
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 22px;">🏭</span>
-                <div>
-                    <div style="font-size: 17px; font-weight: 800; color: #f8fafc; letter-spacing: -0.02em;">
-                        FACTORY RELIABILITY COMMAND CENTER
-                    </div>
-                    <div style="font-size: 11px; color: #94a3b8; letter-spacing: 0.04em; text-transform: uppercase;">
-                        Autonomous Reliability & Closed-Loop Operations
-                    </div>
+            <div>
+                <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em;">
+                    FACTORY RELIABILITY COMMAND CENTER
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; text-transform: uppercase;">
+                    Autonomous Reliability & Closed-Loop Operations
                 </div>
             </div>
             """,
@@ -46,11 +44,11 @@ def render_header(
         line_val = st.session_state.get("selected_line_id", "ALL")
         st.markdown(
             f"""
-            <div style="font-size: 12px; color: #cbd5e1; padding-top: 4px;">
-                📍 <b>Plant 01</b> (Pune Packaging) &nbsp;|&nbsp; Line: <b>{line_val}</b>
+            <div style="font-size: 12px; color: var(--text-secondary); padding-top: 4px;">
+                <b>Plant 01</b> (Pune Packaging) &nbsp;|&nbsp; Line: <b>{line_val}</b>
             </div>
-            <div style="font-size: 11px; color: #64748b;">
-                Operator: <code>{st.session_state.get("active_user", "operator.sarah")}</code>
+            <div style="font-size: 11px; color: var(--text-muted);">
+                Operator: <code>{st.session_state.get("active_user", "operator.shubham")}</code>
             </div>
             """,
             unsafe_allow_html=True,
@@ -71,29 +69,29 @@ def render_header(
         now_str = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
         is_snowflake = (backend_mode == "snowflake")
         backend_badge = (
-            "<span class='badge badge-info' style='background: #0284c7; color: white;'>LIVE DATA • SNOWFLAKE</span>"
+            "<span class='badge badge-info'>LIVE DATA • SNOWFLAKE</span>"
             if is_snowflake
-            else "<span class='badge badge-neutral' style='background: #334155; color: #94a3b8;'>DEMO MODE • IN-MEMORY</span>"
+            else "<span class='badge badge-neutral'>DEMO MODE • IN-MEMORY</span>"
         )
         freshness_label = f"Freshness: {freshness.display_age}" if freshness else "Freshness: <1.5s"
         st.markdown(
             f"""
             <div style="text-align: right; font-size: 11px; padding-top: 2px;">
-                <span style="color: #22c55e;">●</span> <b>ONLINE</b> &nbsp;•&nbsp; <span style="color: #38bdf8;">{freshness_label}</span><br>
-                <div style="margin-top: 2px;">{backend_badge}</div>
-                <span style="color: #64748b; font-size: 10px;">Clock: {now_str}</span>
+                <span class="status-dot status-dot-healthy"></span><b>ONLINE</b> &nbsp;•&nbsp; <span style="color: var(--primary-accent);">{freshness_label}</span><br>
+                <div style="margin-top: 3px;">{backend_badge}</div>
+                <span style="color: var(--text-muted); font-size: 10px;">Clock: {now_str}</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 8px 0 16px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 8px 0 16px 0;'/>", unsafe_allow_html=True)
 
     # If search has active query, show deterministic search dropdown results
     if st.session_state.get("search_query"):
         results = on_search(st.session_state.search_query)
         if results:
-            with st.expander(f"🔍 Search Results for '{st.session_state.search_query}' ({len(results)} matches)", expanded=True):
+            with st.expander(f"Search Results for '{st.session_state.search_query}' ({len(results)} matches)", expanded=True):
                 for res in results:
                     r_col1, r_col2 = st.columns([4, 1])
                     with r_col1:

@@ -48,18 +48,18 @@ def main() -> None:
     try:
         st.set_page_config(
             page_title="Factory Reliability Command Center",
-            page_icon="🏭",
             layout="wide",
             initial_sidebar_state="expanded",
         )
     except Exception:
         pass
 
-    # 2. Apply Custom Industrial Dark Theme
-    apply_industrial_theme()
-
-    # 3. Initialize Session State
+    # 2. Initialize Session State
     init_session_state()
+
+    # 3. Apply Industrial Theme (Light Mode Default with Dark Mode Option)
+    theme_mode = st.session_state.get("theme_mode", "light")
+    apply_industrial_theme(theme_mode)
 
     # 4. Storage Backend Selection & Facade Instantiation
     if "backend_mode" not in st.session_state:
@@ -114,14 +114,14 @@ def main() -> None:
     if backend_error or facade is None:
         st.markdown(
             """
-            <div style="background: #1e1014; border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin-top: 10px;">
+            <div style="background: var(--card-hero-bg); border: 1px solid var(--card-hero-border); border-radius: 8px; padding: 20px; margin-top: 10px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 24px;">🚫</span>
+                    <span class="badge badge-critical">UNAVAILABLE</span>
                     <div>
-                        <div style="font-size: 16px; font-weight: 800; color: #fca5a5;">
+                        <div style="font-size: 16px; font-weight: 700; color: #dc2626;">
                             STORAGE BACKEND UNAVAILABLE: SNOWFLAKE CLOUD
                         </div>
-                        <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
                             The application is configured to run in <code>LIVE DATA • SNOWFLAKE</code> mode, but a connection to Snowflake could not be established.
                         </div>
                     </div>
@@ -140,11 +140,11 @@ def main() -> None:
         )
         col_err1, col_err2 = st.columns(2)
         with col_err1:
-            if st.button("🔄 Retry Snowflake Connection", type="primary", use_container_width=True):
+            if st.button("Retry Snowflake Connection", type="primary", use_container_width=True):
                 st.cache_resource.clear()
                 st.rerun()
         with col_err2:
-            if st.button("🔵 Switch to Demo Mode (In-Memory)", use_container_width=True):
+            if st.button("Switch to Demo Mode (In-Memory)", use_container_width=True):
                 st.session_state.backend_mode = "in_memory"
                 st.cache_resource.clear()
                 st.rerun()
@@ -158,7 +158,7 @@ def main() -> None:
         freshness=freshness,
     )
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 8px 0 16px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 8px 0 16px 0;'/>", unsafe_allow_html=True)
 
     # 8. View Router
     active_view = st.session_state.get("active_nav", "Command Center")

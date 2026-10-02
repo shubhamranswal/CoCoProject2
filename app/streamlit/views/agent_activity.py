@@ -4,6 +4,7 @@ Follows Section 24, 25, 26, & 38 of AGENT.md:
 - Complete auditable log of autonomous agent executions
 - Explicit tool calls (tool name, latency, caller actor, status, params)
 - Immutable audit event records proving compliance and human approval enforcement
+- Theme CSS variable styling and zero emojis
 """
 
 from __future__ import annotations
@@ -20,10 +21,10 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
     st.markdown(
         """
         <div style="margin-bottom: 16px;">
-            <div style="font-size: 20px; font-weight: 800; color: #f8fafc; letter-spacing: -0.02em;">
+            <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em;">
                 AGENT ACTIVITY & GOVERNANCE AUDIT TRAIL
             </div>
-            <div style="font-size: 12px; color: #94a3b8;">
+            <div style="font-size: 12px; color: var(--text-muted);">
                 Immutable record of autonomous agent decisions, typed tool executions, and governance enforcement.
             </div>
         </div>
@@ -40,10 +41,10 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
     with col1:
         st.markdown(
             f"""
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Total Tool Invocations</div>
-                <div style="font-size: 26px; font-weight: 800; color: #38bdf8; margin: 4px 0;">{len(tool_calls)}</div>
-                <div style="font-size: 11px; color: #94a3b8;">All Calls Audited & Recorded</div>
+            <div class="ind-card">
+                <div class="metric-label">Total Tool Invocations</div>
+                <div class="metric-value" style="color: var(--primary-accent);">{len(tool_calls)}</div>
+                <div class="metric-delta" style="color: var(--text-muted);">All Calls Audited & Recorded</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -52,10 +53,10 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
     with col2:
         st.markdown(
             f"""
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Audit Event Trail</div>
-                <div style="font-size: 26px; font-weight: 800; color: #22c55e; margin: 4px 0;">{len(audit_events)}</div>
-                <div style="font-size: 11px; color: #94a3b8;">Cryptographically Verifiable</div>
+            <div class="ind-card">
+                <div class="metric-label">Audit Event Trail</div>
+                <div class="metric-value" style="color: #16a34a;">{len(audit_events)}</div>
+                <div class="metric-delta" style="color: var(--text-muted);">Cryptographically Verifiable</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -68,10 +69,10 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
         )
         st.markdown(
             f"""
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Avg Tool Latency</div>
-                <div style="font-size: 26px; font-weight: 800; color: #f8fafc; margin: 4px 0;">{avg_latency:.1f} ms</div>
-                <div style="font-size: 11px; color: #94a3b8;">Sub-Millisecond Execution</div>
+            <div class="ind-card">
+                <div class="metric-label">Avg Tool Latency</div>
+                <div class="metric-value">{avg_latency:.1f} ms</div>
+                <div class="metric-delta" style="color: var(--text-muted);">Sub-Millisecond Execution</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -80,22 +81,22 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
     with col4:
         st.markdown(
             """
-            <div style="background: #111520; border: 1px solid #1f2430; border-radius: 6px; padding: 14px;">
-                <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;">Policy Compliance</div>
-                <div style="font-size: 26px; font-weight: 800; color: #22c55e; margin: 4px 0;">100%</div>
-                <div style="font-size: 11px; color: #22c55e;">Zero Unauthorized Actions</div>
+            <div class="ind-card">
+                <div class="metric-label">Policy Compliance</div>
+                <div class="metric-value" style="color: #16a34a;">100%</div>
+                <div class="metric-delta" style="color: #16a34a;">Zero Unauthorized Actions</div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 18px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
     # 2. Tool Call History
     st.markdown(
         """
-        <div style="font-size: 14px; font-weight: 800; color: #f8fafc; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
-            🛠️ Agent Tool Invocation Records
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
+            Agent Tool Invocation Records
         </div>
         """,
         unsafe_allow_html=True,
@@ -110,19 +111,19 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
                 "Tool": t.tool_name,
                 "Actor": t.actor,
                 "Duration": f"{t.duration_ms:.1f} ms",
-                "Success": "✅ PASS" if t.success else "❌ FAIL",
+                "Success": "PASS" if t.success else "FAIL",
                 "Timestamp": t.started_at.strftime("%H:%M:%S.%f")[:-3],
                 "Parameters": json.dumps(t.parameters)[:80] + ("..." if len(json.dumps(t.parameters)) > 80 else ""),
             })
         st.dataframe(call_rows, use_container_width=True, hide_index=True)
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 18px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
     # 3. Governance Audit Events Log
     st.markdown(
         """
-        <div style="font-size: 14px; font-weight: 800; color: #f8fafc; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
-            🛡️ Governance & State Mutation Audit Log
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px;">
+            Governance & State Mutation Audit Log
         </div>
         """,
         unsafe_allow_html=True,
@@ -143,4 +144,3 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
                 "Details": json.dumps(a.details or {})[:80],
             })
         st.dataframe(audit_rows, use_container_width=True, hide_index=True)
-

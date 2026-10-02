@@ -19,11 +19,12 @@ def init_session_state() -> None:
         "selected_investigation_id": None,
         "selected_work_order_id": None,
         "search_query": "",
-        "active_user": "operator.sarah",
+        "active_user": "operator.shubham",
         "selected_plant_id": "PLANT-01",
         "selected_line_id": "ALL",
         "last_action_message": None,
         "scenario_stage": "INITIALIZED",  # INITIALIZED, INVESTIGATED, APPROVED, WORK_ORDER_CREATED, COMPLETED, VERIFIED
+        "theme_mode": "light",  # light (default) or dark
     }
     for key, val in defaults.items():
         if key not in st.session_state:

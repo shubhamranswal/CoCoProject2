@@ -136,11 +136,11 @@ def test_m21_flagship_closed_loop_workflow():
     # Human operator approves
     approval_record = gateway.approve_proposal(
         proposal_id="PROP-M21-001",
-        approver_id="sarah.chen",
+        approver_id="shubham.r",
         reason="Verified vibration telemetry on S-M21-VIB exceeds safety thresholds. Approved replacement.",
     )
     assert approval_record.status == ApprovalStatus.APPROVED
-    assert approval_record.decision_by == "sarah.chen"
+    assert approval_record.decision_by == "shubham.r"
 
     # 5. ACT: Zero-Trust Action Execution
     # Part reservation check: SP-002 is out of stock in canonical data
@@ -157,7 +157,7 @@ def test_m21_flagship_closed_loop_workflow():
     # Execute approved work order creation through zero-trust execution service
     execution = exec_svc.execute_proposal(
         proposal_id="PROP-M21-001",
-        caller_actor="sarah.chen",
+        caller_actor="shubham.r",
         idempotency_key="IDEM-M21-WO-001",
     )
     assert execution.status == "SUCCESS"

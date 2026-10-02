@@ -6,6 +6,7 @@ Follows Sections 24, 25, 26, & 27 of AGENT.md:
 - Controlled technician execution simulation (Start Work -> Sign Off)
 - Post-maintenance physical verification panel (Before vs After delta table)
 - Supports both nominal recovery and failed repair simulation paths
+- Theme CSS variable styling and zero emojis
 """
 
 from __future__ import annotations
@@ -24,10 +25,10 @@ def render_work_orders_view(facade: CommandCenterFacade) -> None:
     st.markdown(
         """
         <div style="margin-bottom: 14px;">
-            <div style="font-size: 20px; font-weight: 800; color: #f8fafc; letter-spacing: -0.02em;">
+            <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em;">
                 MAINTENANCE WORK ORDERS & VERIFICATION
             </div>
-            <div style="font-size: 12px; color: #94a3b8;">
+            <div style="font-size: 12px; color: var(--text-muted);">
                 Governed work order lifecycle, technician execution tracking, and post-repair physical telemetry verification.
             </div>
         </div>
@@ -76,7 +77,7 @@ def render_work_orders_view(facade: CommandCenterFacade) -> None:
         on_complete_work=lambda wo_id, tech, dur, notes, acts: facade.complete_work_order(wo_id, tech, dur, notes, acts),
     )
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 16px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 16px 0;'/>", unsafe_allow_html=True)
 
     # 2. Closed-Loop Verification Panel
     render_verification_panel(
@@ -85,7 +86,7 @@ def render_work_orders_view(facade: CommandCenterFacade) -> None:
         on_run_verification=lambda wo_id, verifier, fail_mode: facade.run_verification(wo_id, verifier, fail_mode),
     )
 
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 16px 0;'/>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 16px 0;'/>", unsafe_allow_html=True)
 
     # 3. All Work Orders Table
     render_work_orders_table(

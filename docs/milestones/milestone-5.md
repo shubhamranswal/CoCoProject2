@@ -142,7 +142,7 @@ The complete closed-loop product loop was validated on canonical asset **M21** (
 1. **SENSE & PREDICT:** Canonical prediction `PRED-000322` on `M21` with failure probability $0.95$ and risk `HIGH`.
 2. **INVESTIGATE:** CoCo investigation correlates vibration exceedance on sensor `S-M21-VIB` with bearing degradation on component `C-M21-BRG`.
 3. **RECOMMEND:** Advisory recommendation generates `ActionProposal` `PROP-M21-001` for bearing replacement and spare part reservation.
-4. **APPROVE:** Autonomous self-approval attempts by `ReliabilityAgent` and `CoCo` are rejected with `PermissionError`. Human operator `sarah.chen` approves the replacement proposal.
+4. **APPROVE:** Autonomous self-approval attempts by `ReliabilityAgent` and `CoCo` are rejected with `PermissionError`. Human operator `shubham.r` approves the replacement proposal.
 5. **ACT:**
    * Preconditions check `SP-002` (`Drive-End Bearing 6206-2RS`, compatible model: `6206-2RS`, supplier: `SUP-12`, lead time: 5 days, stock: 0, reorder level: 2, reorder quantity: 4) $\rightarrow$ stockout detected (`stock_qty = 0`, `lead_time_days = 5`); reservation fails safely with honest shortage reporting.
    * Emergency work order is executed idempotently via `create_work_order`.
