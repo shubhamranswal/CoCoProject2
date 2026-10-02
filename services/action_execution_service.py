@@ -11,16 +11,34 @@ Follows Milestone 5 Zero-Trust Architecture:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 
 from domain.enums import ActionProposalStatus, ApprovalStatus
-from domain.exceptions import ApprovalExpiredError, ApprovalRequiredError
+from domain.exceptions import (
+    ApprovalExpiredError,
+    ApprovalRequiredError,
+    UnsupportedOperationError,
+)
 from domain.models import ActionExecution, ActionProposal, AuditEvent
 from repositories.base import GovernanceRepository
 from services.action_precondition_service import ActionPreconditionService
 from services.approval_service import ApprovalService
 from tools.actions.action_registry import M5ActionRegistry
+
+
+DISALLOWED_ACTOR_PREFIXES = (
+    "reliabilityagent",
+    "coco",
+    "agent",
+    "systemagent",
+    "system",
+    "autonomous",
+    "bot",
+    "orchestrator",
+    "ml_engine",
+    "pipeline",
+)
 
 
 class ActionExecutionService:
@@ -32,11 +50,13 @@ class ActionExecutionService:
         action_registry: M5ActionRegistry,
         precondition_service: ActionPreconditionService,
         approval_service: Optional[ApprovalService] = None,
+        verification_service: Optional[Any] = None,
     ) -> None:
         self.gov_repo = governance_repo
         self.action_registry = action_registry
         self.precondition_service = precondition_service
         self.approval_service = approval_service or ApprovalService(repository=governance_repo)
+        self.verification_service = verification_service
 
     def execute_proposal(
         self,
@@ -46,6 +66,8 @@ class ActionExecutionService:
         execution_id: Optional[str] = None,
     ) -> ActionExecution:
         """Execute an approved action proposal through the zero-trust pipeline."""
+        self._validate_actor(caller_actor)
+
         now = datetime.now(timezone.utc)
         exec_id = execution_id or f"EXE-{proposal_id}-{int(now.timestamp())}"
 
@@ -120,12 +142,12 @@ class ActionExecutionService:
             if hasattr(self.gov_repo, "save_action_execution"):
                 self.gov_repo.save_action_execution(failed_execution)
 
-            # Update proposal status to FAILED
+            # Update proposal status to EXECUTION_BLOCKED
             if hasattr(self.gov_repo, "update_action_proposal"):
                 self.gov_repo.update_action_proposal(
                     proposal.model_copy(
                         update={
-                            "status": ActionProposalStatus.FAILED.value,
+                            "status": ActionProposalStatus.EXECUTION_BLOCKED.value,
                             "updated_at": datetime.now(timezone.utc),
                         }
                     )
@@ -151,15 +173,54 @@ class ActionExecutionService:
             )
 
         # 7. Execute Typed Action Tool
-        action_type_normalized = proposal.action_type.lower()
-        tool_name = self._resolve_tool_name(action_type_normalized)
+        tool_name = self._resolve_tool_name(proposal.action_type)
+        if not self.action_registry.has_tool(tool_name):
+            raise UnsupportedOperationError(
+                f"Action type '{proposal.action_type}' is not supported by any registered action tool.",
+                entity_id=proposal_id,
+            )
 
-        tool_args: Dict[str, Any] = {
-            "approval_id": approval_id,
-            "machine_id": proposal.machine_id,
-            "idempotency_key": target_idem,
-            **proposal.parameters,
-        }
+        if tool_name == "create_work_order":
+            desc = (
+                proposal.parameters.get("description")
+                or proposal.parameters.get("action_description")
+                or proposal.reason
+            )
+            title = (
+                proposal.parameters.get("title")
+                or f"Inspect {proposal.machine_id} {proposal.component_id or ''}".strip()
+            )
+            checklist = (
+                proposal.parameters.get("checklist")
+                or proposal.parameters.get("suggested_checklist")
+                or []
+            )
+            tool_args = {
+                "approval_id": approval_id,
+                "machine_id": proposal.machine_id,
+                "component_id": proposal.component_id or proposal.parameters.get("component_id") or "UNKNOWN",
+                "title": title,
+                "description": desc,
+                "priority": proposal.priority,
+                "checklist": checklist,
+                "investigation_id": proposal.investigation_id,
+                "recommendation_id": proposal.recommendation_id,
+                "idempotency_key": target_idem,
+                **proposal.parameters,
+            }
+            tool_args["title"] = title
+            tool_args["description"] = desc
+            tool_args["checklist"] = checklist
+            tool_args["idempotency_key"] = target_idem
+            if "assigned_to" not in proposal.parameters and "technician_id" not in proposal.parameters:
+                tool_args["assigned_to"] = None
+        else:
+            tool_args = {
+                "approval_id": approval_id,
+                "machine_id": proposal.machine_id,
+                "idempotency_key": target_idem,
+                **proposal.parameters,
+            }
 
         try:
             tool_result = self.action_registry.execute_tool(
@@ -263,13 +324,72 @@ class ActionExecutionService:
 
     def _resolve_tool_name(self, action_type: str) -> str:
         """Map canonical action type to registered action tool name."""
-        if "work_order" in action_type:
+        norm = action_type.strip().lower()
+        if "work_order" in norm or "inspect" in norm:
             return "create_work_order"
-        if "part" in action_type or "inventory" in action_type or "reserve" in action_type:
+        if "part" in norm or "inventory" in norm or "reserve" in norm:
             return "reserve_spare_part"
-        if "assign" in action_type or "technician" in action_type:
+        if "assign" in norm or "technician" in norm:
             return "assign_technician"
         return action_type
+
+    def _validate_actor(self, actor: str) -> None:
+        """Prevent execution by autonomous agents, bots, system processes, or empty actor identity."""
+        if not actor or not actor.strip():
+            raise ValueError("Actor identity cannot be empty.")
+
+        normalized = actor.strip().lower()
+        if any(normalized.startswith(p) for p in DISALLOWED_ACTOR_PREFIXES):
+            raise PermissionError(
+                f"Actor '{actor}' is an autonomous agent or system process. "
+                "Only authorized human operators may execute operational action proposals."
+            )
+
+    def verify_proposal_execution(
+        self,
+        proposal_id: str,
+        execution_id: str,
+        work_order_id: str,
+        investigation_id: str,
+        machine_id: str,
+        pre_features: Optional[Any] = None,
+        post_features: Optional[Any] = None,
+        pre_risk: Optional[Any] = None,
+        post_risk: Optional[Any] = None,
+        pre_oee: Optional[Any] = None,
+        post_oee: Optional[Any] = None,
+        active_anomalies: Optional[List[Any]] = None,
+        policy: Optional[Any] = None,
+        verifier: str = "SYSTEM",
+        prediction_id: Optional[str] = None,
+        downtime_avoided_hours: float = 0.0,
+        is_simulated_telemetry: bool = False,
+        telemetry_provenance: Optional[Dict[str, Any]] = None,
+    ) -> Any:
+        """Bridge connecting executed action to physical verification and outcome recording."""
+        if not self.verification_service:
+            raise ValueError("VerificationService is not configured on ActionExecutionService.")
+
+        return self.verification_service.verify_recovery(
+            work_order_id=work_order_id,
+            investigation_id=investigation_id,
+            machine_id=machine_id,
+            pre_features=pre_features,
+            post_features=post_features,
+            pre_risk=pre_risk,
+            post_risk=post_risk,
+            pre_oee=pre_oee,
+            post_oee=post_oee,
+            active_anomalies=active_anomalies,
+            policy=policy,
+            verifier=verifier,
+            action_proposal_id=proposal_id,
+            execution_id=execution_id,
+            prediction_id=prediction_id,
+            downtime_avoided_hours=downtime_avoided_hours,
+            is_simulated_telemetry=is_simulated_telemetry,
+            telemetry_provenance=telemetry_provenance,
+        )
 
     def _log_audit(self, actor: str, action_type: str, resource_id: str, details: Dict[str, Any]) -> None:
         if hasattr(self.gov_repo, "log_audit"):

@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 import json
 
 from domain.exceptions import UnsupportedOperationError
-from domain.enums import AlertStatus, ApprovalStatus, HealthStatus, MachineState, WorkOrderStatus, SensorType, Severity, FailureMode
+from domain.enums import AlertStatus, ApprovalStatus, HealthStatus, MachineState, WorkOrderStatus, SensorType, Severity, FailureMode, VerificationStatus
 from domain.models import (
     Alert,
     Anomaly,
@@ -2955,14 +2955,16 @@ class SnowflakeRepository(
             cur.execute(
                 """
                 INSERT INTO COCO_FACTORY.APP.ACTION_OUTCOME
-                (outcome_id, action_proposal_id, work_order_id, prediction_id, machine_id,
+                (outcome_id, action_proposal_id, execution_id, verification_id, work_order_id, prediction_id, machine_id,
                  failure_mode, observed_failure_confirmed, downtime_avoided_hours, verification_status,
-                 feedback_notes, recorded_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 telemetry_provenance, is_simulated_telemetry, feedback_notes, recorded_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRY_PARSE_JSON(%s), %s, %s, %s)
                 """,
                 (
                     outcome.outcome_id,
                     outcome.action_proposal_id,
+                    outcome.execution_id,
+                    outcome.verification_id,
                     outcome.work_order_id,
                     outcome.prediction_id,
                     outcome.machine_id,
@@ -2970,6 +2972,8 @@ class SnowflakeRepository(
                     outcome.observed_failure_confirmed,
                     outcome.downtime_avoided_hours,
                     outcome.verification_status.value if hasattr(outcome.verification_status, "value") else str(outcome.verification_status),
+                    json.dumps(outcome.telemetry_provenance or {}),
+                    bool(outcome.is_simulated_telemetry),
                     outcome.feedback_notes,
                     outcome.recorded_at.isoformat() if outcome.recorded_at else None,
                 ),
@@ -2986,9 +2990,10 @@ class SnowflakeRepository(
         try:
             cur.execute(
                 """
-                SELECT outcome_id, action_proposal_id, work_order_id, prediction_id, machine_id,
-                       failure_mode, observed_failure_confirmed, downtime_avoided_hours, verification_status,
-                       feedback_notes, recorded_at
+                SELECT outcome_id, action_proposal_id, execution_id, verification_id, work_order_id,
+                       prediction_id, machine_id, failure_mode, observed_failure_confirmed,
+                       downtime_avoided_hours, verification_status, telemetry_provenance,
+                       is_simulated_telemetry, feedback_notes, recorded_at
                 FROM COCO_FACTORY.APP.ACTION_OUTCOME WHERE outcome_id = %s
                 """,
                 (outcome_id,),
@@ -2996,18 +3001,28 @@ class SnowflakeRepository(
             r = cur.fetchone()
             if not r:
                 return None
+            telemetry_prov = r[11] if isinstance(r[11], dict) else (json.loads(r[11]) if r[11] else {})
+            v_status = (
+                VerificationStatus(r[10])
+                if r[10] in VerificationStatus._value2member_map_
+                else VerificationStatus.VERIFIED
+            )
             return ActionOutcome(
                 outcome_id=r[0],
                 action_proposal_id=r[1],
-                work_order_id=r[2],
-                prediction_id=r[3],
-                machine_id=r[4],
-                failure_mode=r[5],
-                observed_failure_confirmed=bool(r[6]),
-                downtime_avoided_hours=float(r[7] or 0.0),
-                verification_status=VerificationStatus(r[8]),
-                feedback_notes=r[9] or "",
-                recorded_at=r[10],
+                execution_id=r[2],
+                verification_id=r[3],
+                work_order_id=r[4],
+                prediction_id=r[5],
+                machine_id=r[6],
+                failure_mode=r[7],
+                observed_failure_confirmed=bool(r[8]),
+                downtime_avoided_hours=float(r[9] or 0.0),
+                verification_status=v_status,
+                telemetry_provenance=telemetry_prov,
+                is_simulated_telemetry=bool(r[12]),
+                feedback_notes=r[13] or "",
+                recorded_at=r[14],
             )
         finally:
             cur.close()
@@ -3020,9 +3035,10 @@ class SnowflakeRepository(
         cur = conn.cursor()
         try:
             query = """
-                SELECT outcome_id, action_proposal_id, work_order_id, prediction_id, machine_id,
-                       failure_mode, observed_failure_confirmed, downtime_avoided_hours, verification_status,
-                       feedback_notes, recorded_at
+                SELECT outcome_id, action_proposal_id, execution_id, verification_id, work_order_id,
+                       prediction_id, machine_id, failure_mode, observed_failure_confirmed,
+                       downtime_avoided_hours, verification_status, telemetry_provenance,
+                       is_simulated_telemetry, feedback_notes, recorded_at
                 FROM COCO_FACTORY.APP.ACTION_OUTCOME WHERE 1=1
             """
             params = []
@@ -3032,22 +3048,34 @@ class SnowflakeRepository(
             query += " ORDER BY recorded_at DESC"
             cur.execute(query, tuple(params) if params else None)
             rows = cur.fetchall()
-            return [
-                ActionOutcome(
-                    outcome_id=r[0],
-                    action_proposal_id=r[1],
-                    work_order_id=r[2],
-                    prediction_id=r[3],
-                    machine_id=r[4],
-                    failure_mode=r[5],
-                    observed_failure_confirmed=bool(r[6]),
-                    downtime_avoided_hours=float(r[7] or 0.0),
-                    verification_status=VerificationStatus(r[8]),
-                    feedback_notes=r[9] or "",
-                    recorded_at=r[10],
+            outcomes = []
+            for r in rows:
+                telemetry_prov = r[11] if isinstance(r[11], dict) else (json.loads(r[11]) if r[11] else {})
+                v_status = (
+                    VerificationStatus(r[10])
+                    if r[10] in VerificationStatus._value2member_map_
+                    else VerificationStatus.VERIFIED
                 )
-                for r in rows
-            ]
+                outcomes.append(
+                    ActionOutcome(
+                        outcome_id=r[0],
+                        action_proposal_id=r[1],
+                        execution_id=r[2],
+                        verification_id=r[3],
+                        work_order_id=r[4],
+                        prediction_id=r[5],
+                        machine_id=r[6],
+                        failure_mode=r[7],
+                        observed_failure_confirmed=bool(r[8]),
+                        downtime_avoided_hours=float(r[9] or 0.0),
+                        verification_status=v_status,
+                        telemetry_provenance=telemetry_prov,
+                        is_simulated_telemetry=bool(r[12]),
+                        feedback_notes=r[13] or "",
+                        recorded_at=r[14],
+                    )
+                )
+            return outcomes
         finally:
             cur.close()
             conn.close()

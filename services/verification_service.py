@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from domain.enums import (
+    ActionProposalStatus,
     HealthStatus,
     InvestigationStatus,
     MachineState,
@@ -95,13 +96,23 @@ class VerificationService:
         policy: Optional[Any] = None,
         verifier: str = "SYSTEM",
         action_proposal_id: Optional[str] = None,
+        execution_id: Optional[str] = None,
         prediction_id: Optional[str] = None,
         downtime_avoided_hours: float = 0.0,
+        is_simulated_telemetry: bool = False,
+        telemetry_provenance: Optional[Dict[str, Any]] = None,
     ) -> Verification:
         """Evaluate post-maintenance telemetry against verification policy and update system state."""
         pol = policy or VerificationPolicy()
         now = datetime.now(timezone.utc)
         active_anoms = active_anomalies or []
+
+        # Resolve execution_id from repository if not directly passed
+        exec_id = execution_id
+        if not exec_id and action_proposal_id and hasattr(self.repo, "list_action_executions"):
+            execs = self.repo.list_action_executions(action_proposal_id=action_proposal_id)
+            if execs:
+                exec_id = execs[0].execution_id
 
         # Enforce prerequisite: work order must be COMPLETED
         wo = None
@@ -126,6 +137,7 @@ class VerificationService:
                 investigation_id=investigation_id,
                 work_order_id=work_order_id,
                 machine_id=machine_id,
+                action_execution_id=exec_id,
                 verified_at=now,
                 pre_vibration_rms=pre_features.vibration_rms if pre_features else None,
                 post_vibration_rms=post_features.vibration_rms if post_features else None,
@@ -143,7 +155,7 @@ class VerificationService:
                 verification_status=status,
                 verification_reason=reason,
                 oee_recovery_pct=0.0,
-                notes=f"Evaluated with verifier '{verifier}'. Telemetry missing -> INCONCLUSIVE.",
+                notes=f"Evaluated with verifier '{verifier}'. Telemetry missing -> INCONCLUSIVE. Simulated={is_simulated_telemetry}.",
             )
             self.repo.save_verification(verification)
 
@@ -154,6 +166,8 @@ class VerificationService:
                         outcome_id=f"OUT-{work_order_id}-{int(now.timestamp())}",
                         action_proposal_id=action_proposal_id or getattr(wo, "action_proposal_id", None) or f"PROP-{work_order_id}",
                         work_order_id=work_order_id,
+                        execution_id=exec_id,
+                        verification_id=verification.verification_id,
                         prediction_id=prediction_id,
                         machine_id=machine_id,
                         failure_mode=getattr(wo, "failure_mode", "BEARING_DEGRADATION") if wo else "BEARING_DEGRADATION",
@@ -161,6 +175,8 @@ class VerificationService:
                         downtime_avoided_hours=0.0,
                         verification_status=status,
                         feedback_notes=reason,
+                        telemetry_provenance=telemetry_provenance or {},
+                        is_simulated_telemetry=is_simulated_telemetry,
                         recorded_at=now,
                     )
                 )
@@ -242,6 +258,7 @@ class VerificationService:
             investigation_id=investigation_id,
             work_order_id=work_order_id,
             machine_id=machine_id,
+            action_execution_id=exec_id,
             verified_at=now,
             pre_vibration_rms=pre_features.vibration_rms,
             post_vibration_rms=post_features.vibration_rms,
@@ -259,7 +276,7 @@ class VerificationService:
             verification_status=status,
             verification_reason=reason,
             oee_recovery_pct=round(oee_delta * 100.0, 2),
-            notes=f"Evaluated with verifier '{verifier}' against VerificationPolicy.",
+            notes=f"Evaluated with verifier '{verifier}' against VerificationPolicy. Simulated={is_simulated_telemetry}.",
         )
 
         self.repo.save_verification(verification)
@@ -271,16 +288,36 @@ class VerificationService:
                     outcome_id=f"OUT-{work_order_id}-{int(now.timestamp())}",
                     action_proposal_id=action_proposal_id or getattr(wo, "action_proposal_id", None) or f"PROP-{work_order_id}",
                     work_order_id=work_order_id,
+                    execution_id=exec_id,
+                    verification_id=verification.verification_id,
                     prediction_id=prediction_id,
                     machine_id=machine_id,
                     failure_mode=getattr(wo, "failure_mode", "BEARING_DEGRADATION") if wo else "BEARING_DEGRADATION",
-                    observed_failure_confirmed=True,
+                    observed_failure_confirmed=(status == VerificationStatus.VERIFIED),
                     downtime_avoided_hours=downtime_avoided_hours if status == VerificationStatus.VERIFIED else 0.0,
                     verification_status=status,
                     feedback_notes=reason,
+                    telemetry_provenance=telemetry_provenance or {},
+                    is_simulated_telemetry=is_simulated_telemetry,
                     recorded_at=now,
                 )
             )
+
+        # Update linked ActionProposal status
+        if action_proposal_id and hasattr(self.repo, "get_action_proposal") and hasattr(self.repo, "update_action_proposal"):
+            prop = self.repo.get_action_proposal(action_proposal_id)
+            if prop:
+                if status == VerificationStatus.VERIFIED:
+                    new_prop_status = ActionProposalStatus.VERIFIED.value
+                elif status in (VerificationStatus.FAILED, VerificationStatus.VERIFICATION_FAILED):
+                    new_prop_status = ActionProposalStatus.VERIFICATION_FAILED.value
+                else:
+                    new_prop_status = prop.status
+                self.repo.update_action_proposal(
+                    prop.model_copy(
+                        update={"status": new_prop_status, "updated_at": now}
+                    )
+                )
 
         # 5. Governed Lifecycle Transitions
         if status == VerificationStatus.VERIFIED:

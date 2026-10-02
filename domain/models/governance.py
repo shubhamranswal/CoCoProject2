@@ -106,6 +106,8 @@ class ActionOutcome(BaseModel):
     outcome_id: str
     action_proposal_id: str
     work_order_id: str
+    execution_id: Optional[str] = None
+    verification_id: Optional[str] = None
     prediction_id: Optional[str] = None
     machine_id: str
     failure_mode: str = "BEARING_DEGRADATION"
@@ -113,6 +115,8 @@ class ActionOutcome(BaseModel):
     downtime_avoided_hours: float = 0.0
     verification_status: VerificationStatus = VerificationStatus.VERIFIED
     feedback_notes: str = ""
+    telemetry_provenance: Dict[str, Any] = Field(default_factory=dict)
+    is_simulated_telemetry: bool = False
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

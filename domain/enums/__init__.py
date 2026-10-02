@@ -123,6 +123,7 @@ class ActionProposalStatus(str, Enum):
     CANCELLED = "CANCELLED"
     FAILED = "FAILED"
     VERIFICATION_FAILED = "VERIFICATION_FAILED"
+    EXECUTION_BLOCKED = "EXECUTION_BLOCKED"
 
 
 class FailureMode(str, Enum):

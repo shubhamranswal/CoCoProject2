@@ -165,9 +165,9 @@ def test_sp002_stockout_safely_fails_execution_without_crashing(execution_env):
     assert "SP-002" in execution.error_message
     assert "lead time: 5 days" in execution.error_message
 
-    # Proposal marked FAILED
+    # Proposal marked EXECUTION_BLOCKED
     persisted_prop = repo.get_action_proposal("PROP-SP002")
-    assert persisted_prop.status == ActionProposalStatus.FAILED.value
+    assert persisted_prop.status == ActionProposalStatus.EXECUTION_BLOCKED.value
 
 
 def test_idempotent_execution_returns_prior_result(execution_env):

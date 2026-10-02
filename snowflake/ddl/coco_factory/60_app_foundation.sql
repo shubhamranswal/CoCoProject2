@@ -279,6 +279,8 @@ CREATE TABLE IF NOT EXISTS VERIFICATION_RESULT (
 CREATE TABLE IF NOT EXISTS ACTION_OUTCOME (
     outcome_id                  VARCHAR(64) NOT NULL,
     action_proposal_id          VARCHAR(64) NOT NULL,
+    execution_id                VARCHAR(64),
+    verification_id             VARCHAR(64),
     work_order_id               VARCHAR(32) NOT NULL,
     prediction_id               VARCHAR(64),
     machine_id                  VARCHAR(32) NOT NULL,
@@ -286,6 +288,8 @@ CREATE TABLE IF NOT EXISTS ACTION_OUTCOME (
     observed_failure_confirmed  BOOLEAN DEFAULT TRUE,
     downtime_avoided_hours      FLOAT DEFAULT 0.0,
     verification_status         VARCHAR(32) NOT NULL,
+    telemetry_provenance        VARIANT,
+    is_simulated_telemetry      BOOLEAN DEFAULT FALSE,
     feedback_notes              VARCHAR(2048),
     recorded_at                 TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     CONSTRAINT pk_app_action_outcome PRIMARY KEY (outcome_id)

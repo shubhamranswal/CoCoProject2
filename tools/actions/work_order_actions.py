@@ -10,7 +10,7 @@ Follows AGENT.md & architecture/architecture.md:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 
 from domain.enums import FailureMode, Priority, WorkOrderStatus
@@ -31,10 +31,11 @@ class CreateWorkOrderInput(BaseModel):
     description: str = Field(description="Actionable maintenance instructions")
     priority: Priority = Field(default=Priority.HIGH, description="Work order priority")
     failure_mode: FailureMode = Field(default=FailureMode.BEARING_DEGRADATION, description="Target failure mode")
-    assigned_to: str = Field(default="MAINT-CREW-1", description="Assigned technician or maintenance team")
+    assigned_to: Optional[str] = Field(default=None, description="Assigned technician or maintenance team")
     scheduled_date: Optional[datetime] = Field(default=None, description="Scheduled execution timestamp")
     investigation_id: Optional[str] = Field(default=None, description="Linked investigation ID")
     recommendation_id: Optional[str] = Field(default=None, description="Linked recommendation ID")
+    checklist: List[str] = Field(default_factory=list, description="Inspection or task checklist")
     idempotency_key: Optional[str] = Field(default=None, description="Unique client key ensuring idempotent execution")
 
 
@@ -79,6 +80,7 @@ class CreateWorkOrderAction(BaseActionTool):
             assigned_to=params.assigned_to,
             created_at=now,
             scheduled_date=params.scheduled_date,
+            checklist=getattr(params, "checklist", []) or [],
             idempotency_key=idem_key,
         )
 

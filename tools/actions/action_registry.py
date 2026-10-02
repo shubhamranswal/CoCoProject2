@@ -69,6 +69,9 @@ class M5ActionRegistry:
             raise KeyError(f"Action tool '{name}' is not registered in M5 action registry.")
         return self._tools[name]
 
+    def has_tool(self, name: str) -> bool:
+        return name in self._tools
+
     def list_tools(self) -> List[BaseActionTool]:
         return list(self._tools.values())
 

@@ -31,6 +31,7 @@ from domain.enums import (
 )
 from domain.models import (
     ActionExecution,
+    ActionOutcome,
     Alert,
     Approval,
     AuditEvent,
@@ -412,6 +413,76 @@ def test_app_governance_investigation_and_approval(repo: SnowflakeRepository, mo
     sql, params = cur.execute.call_args[0]
     assert "INSERT INTO COCO_FACTORY.APP.ACTION_AUDIT" in sql
     assert params[0] == "AUD-001"
+
+    # Action Outcome (Closed-Loop Learning 15-column schema)
+    outcome = ActionOutcome(
+        outcome_id="OUT-001",
+        action_proposal_id="PROP-001",
+        execution_id="EXEC-001",
+        verification_id="VER-001",
+        work_order_id="WO-001",
+        prediction_id="PRED-001",
+        machine_id="M21",
+        failure_mode="BEARING_DEGRADATION",
+        observed_failure_confirmed=True,
+        downtime_avoided_hours=12.5,
+        verification_status=VerificationStatus.VERIFIED,
+        telemetry_provenance={"source": "telemetry_post_eval", "baseline_hours": 24},
+        is_simulated_telemetry=False,
+        feedback_notes="Maintenance completed successfully",
+    )
+    repo.save_action_outcome(outcome)
+    sql, params = cur.execute.call_args[0]
+    assert "INSERT INTO COCO_FACTORY.APP.ACTION_OUTCOME" in sql
+    assert "execution_id" in sql
+    assert "verification_id" in sql
+    assert "telemetry_provenance" in sql
+    assert "is_simulated_telemetry" in sql
+    assert params[0] == "OUT-001"
+    assert params[1] == "PROP-001"
+    assert params[2] == "EXEC-001"
+    assert params[3] == "VER-001"
+    assert params[4] == "WO-001"
+    assert params[5] == "PRED-001"
+    assert params[6] == "M21"
+    assert params[7] == "BEARING_DEGRADATION"
+    assert params[8] is True
+    assert params[9] == 12.5
+    assert params[10] == "VERIFIED"
+    assert "telemetry_post_eval" in params[11]
+    assert params[12] is False
+    assert params[13] == "Maintenance completed successfully"
+
+    # get_action_outcome
+    cur.fetchone.return_value = (
+        "OUT-001", "PROP-001", "EXEC-001", "VER-001", "WO-001", "PRED-001", "M21",
+        "BEARING_DEGRADATION", True, 12.5, "VERIFIED",
+        '{"source": "telemetry_post_eval", "baseline_hours": 24}',
+        False, "Maintenance completed successfully", datetime.now(timezone.utc),
+    )
+    fetched_outcome = repo.get_action_outcome("OUT-001")
+    assert fetched_outcome is not None
+    assert fetched_outcome.outcome_id == "OUT-001"
+    assert fetched_outcome.execution_id == "EXEC-001"
+    assert fetched_outcome.verification_id == "VER-001"
+    assert fetched_outcome.telemetry_provenance["source"] == "telemetry_post_eval"
+    assert fetched_outcome.is_simulated_telemetry is False
+
+    # list_action_outcomes
+    cur.fetchall.return_value = [
+        (
+            "OUT-001", "PROP-001", "EXEC-001", "VER-001", "WO-001", "PRED-001", "M21",
+            "BEARING_DEGRADATION", True, 12.5, "VERIFIED",
+            '{"source": "telemetry_post_eval", "baseline_hours": 24}',
+            False, "Maintenance completed successfully", datetime.now(timezone.utc),
+        )
+    ]
+    outcome_list = repo.list_action_outcomes(machine_id="M21")
+    assert len(outcome_list) == 1
+    assert outcome_list[0].execution_id == "EXEC-001"
+    assert outcome_list[0].verification_id == "VER-001"
+    assert outcome_list[0].telemetry_provenance["baseline_hours"] == 24
+
 
 
 # ==============================================================================
