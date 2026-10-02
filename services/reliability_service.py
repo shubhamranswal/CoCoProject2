@@ -73,8 +73,13 @@ class ReliabilityService:
             primary_concern=concern,
             updated_at=features.timestamp,
         )
-        self.rel_repo.save_health_assessment(ha)
-        self.mach_repo.update_machine_health(machine_id, status)
+        # For in-memory repositories (tests/demo mode), maintain local health assessment and machine state.
+        # In Snowflake production mode, health is derived directly from CORE.PREDICTION and
+        # telemetry via ANALYTICS.MACHINE_HEALTH_DAILY.
+        if not getattr(self.rel_repo, "is_derived_health", False):
+            self.rel_repo.save_health_assessment(ha)
+        if not getattr(self.mach_repo, "is_derived_health", False):
+            self.mach_repo.update_machine_health(machine_id, status)
 
         return risk
 

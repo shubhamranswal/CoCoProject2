@@ -301,8 +301,8 @@ class VerificationService:
                     )
                     self.investigation_repo.update_investigation(updated_inv)
 
-            # Update Machine Health to HEALTHY
-            if self.machine_repo:
+            # Update Machine Health to HEALTHY (for in-memory mode; in Snowflake, health is derived from telemetry & completed work order)
+            if self.machine_repo and not getattr(self.machine_repo, "is_derived_health", False):
                 self.machine_repo.update_machine_health(
                     machine_id=machine_id,
                     health_status=HealthStatus.HEALTHY,

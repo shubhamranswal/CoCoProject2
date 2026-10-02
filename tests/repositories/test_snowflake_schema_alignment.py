@@ -20,7 +20,9 @@ import pytest
 from domain.enums import (
     ApprovalStatus,
     FailureMode,
+    HealthStatus,
     InvestigationStatus,
+    MachineState,
     Priority,
     VerificationStatus,
     WorkOrderStatus,
@@ -33,6 +35,7 @@ from domain.models import (
     Verification,
     WorkOrder,
 )
+from domain.exceptions import UnsupportedOperationError
 from repositories.snowflake.snowflake_repository import SnowflakeRepository
 
 
@@ -444,3 +447,292 @@ def test_parameterization_protects_against_sql_injection(repo: SnowflakeReposito
     sql, params = cur.execute.call_args[0]
     assert "DROP TABLE" not in sql
     assert params == ("SP-002; DROP TABLE COCO_FACTORY.CORE.SPARE_PART; --",)
+
+
+# ==============================================================================
+# 8. Behavioral Contract & Authoritative Snowflake Persistence Tests
+# ==============================================================================
+
+def test_snowflake_repository_has_no_in_process_authoritative_caches(repo: SnowflakeRepository):
+    """Verify SnowflakeRepository does not use in-memory caches as authoritative persistence."""
+    assert not hasattr(repo, "_machine_health_overrides")
+    assert not hasattr(repo, "_health_assessment_cache")
+    assert getattr(repo, "is_derived_health", False) is True
+
+
+def test_update_machine_health_explicitly_rejects_unsupported_write(repo: SnowflakeRepository):
+    """Verify update_machine_health explicitly raises UnsupportedOperationError on Snowflake backend."""
+    with pytest.raises(UnsupportedOperationError) as exc_info:
+        repo.update_machine_health("M21", HealthStatus.CRITICAL, MachineState.STOPPED)
+    assert "update_machine_health is unsupported on SnowflakeRepository" in str(exc_info.value)
+    assert "COCO_FACTORY.CORE.MACHINE is an immutable master dimension" in str(exc_info.value)
+
+
+def test_save_health_assessment_explicitly_rejects_unsupported_write(repo: SnowflakeRepository):
+    """Verify save_health_assessment explicitly raises UnsupportedOperationError on Snowflake backend."""
+    from domain.models import HealthAssessment
+    ha = HealthAssessment(
+        assessment_id="HA-M21-TEST",
+        machine_id="M21",
+        health_status=HealthStatus.CRITICAL,
+        health_score=35.0,
+        primary_concern="Bearing degradation",
+    )
+    with pytest.raises(UnsupportedOperationError) as exc_info:
+        repo.save_health_assessment(ha)
+    assert "save_health_assessment is unsupported on SnowflakeRepository" in str(exc_info.value)
+    assert "COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY" in str(exc_info.value)
+
+
+def test_get_machine_derives_health_authoritatively_from_analytics_view(repo: SnowflakeRepository, mock_conn):
+    """Verify get_machine extracts authoritative health status directly from Snowflake SQL join."""
+    _, cur = mock_conn
+
+    # Mock Snowflake return with joined health_status = 'CRITICAL'
+    cur.fetchone.return_value = (
+        "M21", "L5", "Grinder 3", "GR-600", "CRITICAL", "GR-600",
+        date(2022, 1, 1), datetime.now(timezone.utc), "CRITICAL",
+    )
+    m = repo.get_machine("M21")
+    assert m is not None
+    assert m.machine_id == "M21"
+    assert m.health_status == HealthStatus.CRITICAL
+
+    sql, params = cur.execute.call_args[0]
+    assert "COCO_FACTORY.CORE.MACHINE" in sql
+    assert "COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY" in sql
+    assert params == ("M21",)
+
+
+def test_get_latest_health_assessment_queries_snowflake_with_no_memory_fallback(repo: SnowflakeRepository, mock_conn):
+    """Verify get_latest_health_assessment strictly returns None when DB has no row (no memory fallback)."""
+    _, cur = mock_conn
+
+    # 1. When DB has no row, must return None directly
+    cur.fetchone.return_value = None
+    latest = repo.get_latest_health_assessment("M21")
+    assert latest is None
+
+    # 2. When DB has record in ANALYTICS.MACHINE_HEALTH_DAILY, it is used authoritatively
+    cur.fetchone.return_value = (
+        "HA-M21-20260928", "M21", "CRITICAL", 35.0, "Critical alert threshold exceeded", date(2026, 9, 28)
+    )
+    db_assessment = repo.get_latest_health_assessment("M21")
+    assert db_assessment is not None
+    assert db_assessment.assessment_id == "HA-M21-20260928"
+    assert db_assessment.health_status == HealthStatus.CRITICAL
+
+
+def test_process_restart_preserves_authoritative_snowflake_state():
+    """Verify that restarting the application (instantiating fresh repository) reads authoritative state."""
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value = cur
+    mgr = MagicMock()
+    mgr.get_connection.return_value = conn
+
+    # First process lifecycle
+    proc1_repo = SnowflakeRepository(mgr)
+    cur.fetchone.return_value = (
+        "M21", "L5", "Grinder 3", "GR-600", "CRITICAL", "GR-600",
+        date(2022, 1, 1), datetime.now(timezone.utc), "CRITICAL",
+    )
+    m1 = proc1_repo.get_machine("M21")
+    assert m1.health_status == HealthStatus.CRITICAL
+
+    # Process restart / replacement with new instance
+    proc2_repo = SnowflakeRepository(mgr)
+    m2 = proc2_repo.get_machine("M21")
+    assert m2.health_status == HealthStatus.CRITICAL
+    assert m2.machine_id == m1.machine_id
+
+
+def test_reliability_service_with_snowflake_repository_contract():
+    """Verify ReliabilityService works seamlessly with SnowflakeRepository without unsupported writes."""
+    from services.reliability_service import ReliabilityService
+    from domain.models import FeatureVector
+
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value = cur
+    cur.fetchall.return_value = []
+    cur.fetchone.return_value = None
+    mgr = MagicMock()
+    mgr.get_connection.return_value = conn
+
+    repo = SnowflakeRepository(mgr)
+    svc = ReliabilityService(reliability_repo=repo, machine_repo=repo, maintenance_repo=repo)
+
+    features = FeatureVector(
+        feature_id="FV-TEST-1",
+        machine_id="M21",
+        timestamp=datetime.now(timezone.utc),
+        vibration_rms=7.5,
+        vibration_peak=10.2,
+        temperature_mean=85.0,
+    )
+    risk = svc.evaluate_failure_risk(
+        machine_id="M21",
+        features=features,
+        active_anomalies=[],
+        failure_mode=FailureMode.BEARING_DEGRADATION,
+    )
+    assert risk is not None
+    assert risk.machine_id == "M21"
+    # Verify FailureRisk was persisted to CORE.PREDICTION
+    sql, params = cur.execute.call_args[0]
+    assert "COCO_FACTORY.CORE.PREDICTION" in sql
+
+
+def test_verification_service_with_snowflake_repository_contract():
+    """Verify VerificationService handles SnowflakeRepository without calling unsupported machine health write."""
+    from services.verification_service import VerificationService
+    from domain.models import WorkOrder, Investigation, FeatureVector, FailureRisk
+    from domain.enums import Priority
+
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value = cur
+    conn.commit.return_value = None
+    cur.fetchall.return_value = []
+    cur.fetchone.return_value = None
+    mgr = MagicMock()
+    mgr.get_connection.return_value = conn
+
+    repo = SnowflakeRepository(mgr)
+    v_svc = VerificationService(
+        repository=repo,
+        maintenance_repo=repo,
+        investigation_repo=repo,
+        machine_repo=repo,
+    )
+
+    wo = WorkOrder(
+        work_order_id="WO-001",
+        machine_id="M21",
+        title="Replace bearing",
+        description="Physical bearing replacement",
+        failure_mode=FailureMode.BEARING_DEGRADATION,
+        priority=Priority.HIGH,
+        status=WorkOrderStatus.COMPLETED,
+    )
+    inv = Investigation(
+        investigation_id="INV-001",
+        machine_id="M21",
+        status=InvestigationStatus.PENDING_APPROVAL,
+    )
+
+    repo.get_work_order = MagicMock(return_value=wo)
+    repo.get_investigation = MagicMock(return_value=inv)
+    repo.save_verification = MagicMock()
+    repo.save_action_outcome = MagicMock()
+    repo.update_work_order_status = MagicMock()
+    repo.update_investigation = MagicMock()
+
+    pre_feat = FeatureVector(
+        feature_id="FV-PRE-TEST",
+        machine_id="M21",
+        timestamp=datetime.now(timezone.utc),
+        vibration_rms=1.45,
+        vibration_peak=2.10,
+        temperature_mean=78.5,
+    )
+    pre_risk = FailureRisk(
+        risk_id="RISK-PRE",
+        machine_id="M21",
+        risk_score=0.95,
+        failure_mode=FailureMode.BEARING_DEGRADATION,
+    )
+    post_feat = FeatureVector(
+        feature_id="FV-POST-TEST",
+        machine_id="M21",
+        timestamp=datetime.now(timezone.utc),
+        vibration_rms=0.42,
+        vibration_peak=0.60,
+        temperature_mean=58.0,
+    )
+    post_risk = FailureRisk(
+        risk_id="RISK-POST",
+        machine_id="M21",
+        risk_score=0.12,
+        failure_mode=FailureMode.NORMAL_OPERATION,
+    )
+
+    # Verification must run cleanly without raising UnsupportedOperationError
+    ver = v_svc.verify_recovery(
+        work_order_id="WO-001",
+        investigation_id="INV-001",
+        machine_id="M21",
+        pre_features=pre_feat,
+        post_features=post_feat,
+        pre_risk=pre_risk,
+        post_risk=post_risk,
+        verifier="OPERATOR",
+    )
+    assert ver.is_recovered is True
+    assert ver.verification_status == VerificationStatus.VERIFIED
+
+
+def test_memory_repository_behavior_remains_intact_for_unit_and_demo_mode():
+    """Verify InMemoryRepository retains full in-memory mutation behavior for unit/demo mode."""
+    from repositories.memory.memory_repository import InMemoryRepository
+    mem_repo = InMemoryRepository(seed=True)
+
+    # In-memory update_machine_health mutates and persists locally
+    updated = mem_repo.update_machine_health("M204", HealthStatus.CRITICAL, MachineState.STOPPED)
+    assert updated.health_status == HealthStatus.CRITICAL
+    assert updated.state == MachineState.STOPPED
+
+    fetched = mem_repo.get_machine("M204")
+    assert fetched.health_status == HealthStatus.CRITICAL
+    assert fetched.state == MachineState.STOPPED
+
+
+def test_get_plant_and_list_lines_behavioral_contract(repo: SnowflakeRepository, mock_conn):
+    """Verify null safety, uniqueness, and canonical metadata derivation for plant and lines."""
+    _, cur = mock_conn
+
+    # 1. Null / empty / whitespace checks
+    assert repo.get_plant("") is None
+    assert repo.get_plant("   ") is None
+    assert repo.get_plant(None) is None
+    assert repo.list_lines("") == []
+    assert repo.list_lines("   ") == []
+    assert repo.list_lines(None) == []
+
+    # 2. Canonical plant retrieval
+    cur.fetchone.return_value = ("PLT01",)
+    plant = repo.get_plant("PLT01")
+    assert plant is not None
+    assert plant.plant_id == "PLT01"
+    assert plant.name == "Pune Automotive Assembly & Machining Plant"
+    assert plant.location == "Pune, India"
+    assert plant.timezone == "Asia/Kolkata"
+
+    # 3. Canonical lines retrieval with metadata parity
+    cur.fetchall.return_value = [
+        ("L1", "PLT01"),
+        ("L2", "PLT01"),
+        ("L3", "PLT01"),
+        ("L4", "PLT01"),
+        ("L5", "PLT01"),
+    ]
+    lines = repo.list_lines("PLT01")
+    assert len(lines) == 5
+    line_map = {l.line_id: l for l in lines}
+
+    assert line_map["L1"].name == "Heavy Machining Line 1"
+    assert line_map["L1"].target_units_per_hour == 80.0
+
+    assert line_map["L2"].name == "Precision Lathe & Turning Line 2"
+    assert line_map["L2"].target_units_per_hour == 100.0
+
+    assert line_map["L3"].name == "Stamping & Press Line 3"
+    assert line_map["L3"].target_units_per_hour == 150.0
+
+    assert line_map["L4"].name == "Assembly & Injection Molding Line 4"
+    assert line_map["L4"].target_units_per_hour == 120.0
+
+    assert line_map["L5"].name == "Grinding & Finishing Line 5"
+    assert line_map["L5"].target_units_per_hour == 90.0
+

@@ -267,8 +267,8 @@ class CommandCenterFacade:
     def reset_demo(self, seed_degradation: bool = True) -> None:
         """Reset repository to healthy baseline reference state, optionally re-seeding M204 degradation."""
         self.repo.reset_state()
-        self.scenario_engine.reset_to_healthy()
-        self.repo.update_machine_health("M204", HealthStatus.HEALTHY, MachineState.RUNNING)
+        if not getattr(self.repo, "is_derived_health", False):
+            self.repo.update_machine_health("M204", HealthStatus.HEALTHY, MachineState.RUNNING)
         if seed_degradation:
             self.run_m204_degradation_pipeline()
 

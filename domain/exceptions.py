@@ -55,3 +55,7 @@ class ValidationError(CommandCenterError, ValueError):
 
 class ResourceNotFoundError(CommandCenterError, KeyError):
     """Raised when a requested resource does not exist."""
+
+
+class UnsupportedOperationError(CommandCenterError, NotImplementedError):
+    """Raised when attempting an operation not supported by the underlying storage architecture."""

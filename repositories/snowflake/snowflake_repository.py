@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from datetime import date, datetime
 import json
 
+from domain.exceptions import UnsupportedOperationError
 from domain.enums import AlertStatus, ApprovalStatus, HealthStatus, MachineState, WorkOrderStatus, SensorType, Severity, FailureMode
 from domain.models import (
     Alert,
@@ -150,21 +151,25 @@ class SnowflakeRepository(
     KnowledgeSearchRepository,
     MLRepository,
 ):
+    is_derived_health: bool = True
+
     def __init__(self, connection_manager: Optional[SnowflakeConnectionManager] = None) -> None:
         self.conn_mgr = connection_manager or SnowflakeConnectionManager()
 
     # MachineRepository
     def get_plant(self, plant_id: str) -> Optional[Plant]:
+        if not plant_id or not str(plant_id).strip():
+            return None
         conn = self.conn_mgr.get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
                 "SELECT DISTINCT plant_id "
-                "FROM COCO_FACTORY.CORE.MACHINE WHERE plant_id = %s",
-                (plant_id,),
+                "FROM COCO_FACTORY.CORE.MACHINE WHERE plant_id = %s AND plant_id IS NOT NULL",
+                (plant_id.strip(),),
             )
             row = cur.fetchone()
-            if not row:
+            if not row or not row[0]:
                 return None
             p_id = row[0]
             return Plant(
@@ -179,26 +184,40 @@ class SnowflakeRepository(
             conn.close()
 
     def list_lines(self, plant_id: str) -> List[ProductionLine]:
+        if not plant_id or not str(plant_id).strip():
+            return []
         conn = self.conn_mgr.get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
                 "SELECT DISTINCT line_id, plant_id "
-                "FROM COCO_FACTORY.CORE.MACHINE WHERE plant_id = %s ORDER BY line_id",
-                (plant_id,),
+                "FROM COCO_FACTORY.CORE.MACHINE WHERE plant_id = %s "
+                "AND line_id IS NOT NULL AND TRIM(line_id) != '' ORDER BY line_id",
+                (plant_id.strip(),),
             )
             rows = cur.fetchall()
-            return [
-                ProductionLine(
-                    line_id=r[0],
-                    plant_id=r[1],
-                    line_code=r[0],
-                    name=f"Line {r[0]}",
-                    target_units_per_hour=100.0,
-                    status="ACTIVE",
+            canonical_line_meta = {
+                "L1": ("Heavy Machining Line 1", 80.0),
+                "L2": ("Precision Lathe & Turning Line 2", 100.0),
+                "L3": ("Stamping & Press Line 3", 150.0),
+                "L4": ("Assembly & Injection Molding Line 4", 120.0),
+                "L5": ("Grinding & Finishing Line 5", 90.0),
+            }
+            res = []
+            for r in rows:
+                line_id = r[0]
+                meta_name, target_uph = canonical_line_meta.get(line_id, (f"Line {line_id}", 100.0))
+                res.append(
+                    ProductionLine(
+                        line_id=line_id,
+                        plant_id=r[1],
+                        line_code=line_id,
+                        name=meta_name,
+                        target_units_per_hour=target_uph,
+                        status="ACTIVE",
+                    )
                 )
-                for r in rows
-            ]
+            return res
         finally:
             cur.close()
             conn.close()
@@ -208,26 +227,42 @@ class SnowflakeRepository(
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT machine_id, line_id, machine_name, machine_type, criticality, "
-                "model, install_date, _loaded_at "
-                "FROM COCO_FACTORY.CORE.MACHINE WHERE machine_id = %s",
+                """
+                SELECT m.machine_id, m.line_id, m.machine_name, m.machine_type, m.criticality,
+                       m.model, m.install_date, m._loaded_at,
+                       COALESCE(h.health_status, 'HEALTHY') AS current_health_status
+                FROM COCO_FACTORY.CORE.MACHINE m
+                LEFT JOIN (
+                    SELECT machine_id, health_status,
+                           ROW_NUMBER() OVER (PARTITION BY machine_id ORDER BY metric_date DESC) as rn
+                    FROM COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY
+                ) h ON m.machine_id = h.machine_id AND h.rn = 1
+                WHERE m.machine_id = %s
+                """,
                 (machine_id,),
             )
             r = cur.fetchone()
             if not r:
                 return None
+            m_id = r[0]
+            health_val = r[8] if len(r) > 8 and r[8] else "HEALTHY"
+            curr_health = (
+                HealthStatus(health_val)
+                if health_val in HealthStatus._value2member_map_
+                else HealthStatus.HEALTHY
+            )
             return Machine(
-                machine_id=r[0],
+                machine_id=m_id,
                 line_id=r[1],
-                machine_code=r[0],
+                machine_code=m_id,
                 name=r[2],
                 asset_type=r[3],
                 criticality=r[4],
-                health_status=HealthStatus.HEALTHY,
+                health_status=curr_health,
                 state=MachineState.RUNNING,
                 manufacturer="Industrial Dynamics",
                 model=r[5] or "DRV-5000",
-                serial_number=f"SN-{r[0]}",
+                serial_number=f"SN-{m_id}",
                 commission_date=r[6],
                 created_at=r[7] if r[7] else datetime.now(),
             )
@@ -239,38 +274,51 @@ class SnowflakeRepository(
         conn = self.conn_mgr.get_connection()
         cur = conn.cursor()
         try:
+            query = """
+                SELECT m.machine_id, m.line_id, m.machine_name, m.machine_type, m.criticality,
+                       m.model, m.install_date, m._loaded_at,
+                       COALESCE(h.health_status, 'HEALTHY') AS current_health_status
+                FROM COCO_FACTORY.CORE.MACHINE m
+                LEFT JOIN (
+                    SELECT machine_id, health_status,
+                           ROW_NUMBER() OVER (PARTITION BY machine_id ORDER BY metric_date DESC) as rn
+                    FROM COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY
+                ) h ON m.machine_id = h.machine_id AND h.rn = 1
+            """
+            params: list = []
             if line_id:
-                cur.execute(
-                    "SELECT machine_id, line_id, machine_name, machine_type, criticality, "
-                    "model, install_date, _loaded_at "
-                    "FROM COCO_FACTORY.CORE.MACHINE WHERE line_id = %s ORDER BY machine_id",
-                    (line_id,),
-                )
-            else:
-                cur.execute(
-                    "SELECT machine_id, line_id, machine_name, machine_type, criticality, "
-                    "model, install_date, _loaded_at "
-                    "FROM COCO_FACTORY.CORE.MACHINE ORDER BY machine_id"
-                )
+                query += " WHERE m.line_id = %s"
+                params.append(line_id)
+            query += " ORDER BY m.machine_id"
+            cur.execute(query, tuple(params) if params else None)
             rows = cur.fetchall()
-            return [
-                Machine(
-                    machine_id=r[0],
-                    line_id=r[1],
-                    machine_code=r[0],
-                    name=r[2],
-                    asset_type=r[3],
-                    criticality=r[4],
-                    health_status=HealthStatus.HEALTHY,
-                    state=MachineState.RUNNING,
-                    manufacturer="Industrial Dynamics",
-                    model=r[5] or "DRV-5000",
-                    serial_number=f"SN-{r[0]}",
-                    commission_date=r[6],
-                    created_at=r[7] if r[7] else datetime.now(),
+            machines = []
+            for r in rows:
+                m_id = r[0]
+                health_val = r[8] if len(r) > 8 and r[8] else "HEALTHY"
+                curr_health = (
+                    HealthStatus(health_val)
+                    if health_val in HealthStatus._value2member_map_
+                    else HealthStatus.HEALTHY
                 )
-                for r in rows
-            ]
+                machines.append(
+                    Machine(
+                        machine_id=m_id,
+                        line_id=r[1],
+                        machine_code=m_id,
+                        name=r[2],
+                        asset_type=r[3],
+                        criticality=r[4],
+                        health_status=curr_health,
+                        state=MachineState.RUNNING,
+                        manufacturer="Industrial Dynamics",
+                        model=r[5] or "DRV-5000",
+                        serial_number=f"SN-{m_id}",
+                        commission_date=r[6],
+                        created_at=r[7] if r[7] else datetime.now(),
+                    )
+                )
+            return machines
         finally:
             cur.close()
             conn.close()
@@ -335,11 +383,20 @@ class SnowflakeRepository(
     def update_machine_health(
         self, machine_id: str, health_status: HealthStatus, state: Optional[MachineState] = None
     ) -> Machine:
-        m = self.get_machine(machine_id)
-        if not m:
-            raise ValueError(f"Machine {machine_id} not found after update")
-        return m.model_copy(
-            update={"health_status": health_status, **({"state": state} if state else {})}
+        """Explicitly reject unsupported direct machine health mutation on Snowflake backend.
+
+        Canonical Architectural Contract:
+        In COCO_FACTORY, CORE.MACHINE is an immutable asset master dimension.
+        Operational machine health is derived authoritatively from predictions (CORE.PREDICTION),
+        telemetry (CORE.SENSOR_READING_HOURLY), and alerts (CORE.ALERT) in
+        COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY.
+        Direct DML against machine health is not supported.
+        """
+        raise UnsupportedOperationError(
+            f"update_machine_health is unsupported on SnowflakeRepository: "
+            f"COCO_FACTORY.CORE.MACHINE is an immutable master dimension. "
+            f"Operational machine health is derived authoritatively from telemetry, alerts, and predictions "
+            f"via COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY."
         )
 
     # TelemetryRepository
@@ -916,7 +973,21 @@ class SnowflakeRepository(
             conn.close()
 
     def save_health_assessment(self, assessment: HealthAssessment) -> None:
-        pass
+        """Explicitly reject unsupported direct health assessment write on Snowflake backend.
+
+        Canonical Architectural Contract:
+        In COCO_FACTORY, MACHINE_HEALTH_DAILY is an analytics foundation SQL view derived
+        from CORE.PREDICTION, CORE.ALERT, and telemetry exceedances. Direct INSERT into
+        ANALYTICS.MACHINE_HEALTH_DAILY is physically unsupported by Snowflake views.
+        Persistent failure risk is stored via `save_failure_risk` / `save_canonical_prediction` in
+        COCO_FACTORY.CORE.PREDICTION.
+        """
+        raise UnsupportedOperationError(
+            "save_health_assessment is unsupported on SnowflakeRepository: "
+            "health assessments are derived analytical state computed in "
+            "COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY. Persistent reliability state must be "
+            "persisted via save_failure_risk / save_canonical_prediction to COCO_FACTORY.CORE.PREDICTION."
+        )
 
     def get_latest_health_assessment(self, machine_id: str) -> Optional[HealthAssessment]:
         conn = self.conn_mgr.get_connection()
