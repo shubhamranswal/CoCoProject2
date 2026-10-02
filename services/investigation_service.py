@@ -422,6 +422,7 @@ class InvestigationService:
             hypotheses=raw_result.hypotheses,
             limitations=raw_result.limitations,
             provenance={
+                **raw_result.provenance,
                 "tool_count": len(self.tools.list_tools()),
                 "evidence_count": len(collected_evidence),
                 "adapter": self.reasoner.__class__.__name__,

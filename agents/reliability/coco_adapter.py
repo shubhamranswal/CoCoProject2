@@ -9,7 +9,9 @@ Provides:
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
@@ -22,6 +24,7 @@ from domain.models import (
     Recommendation,
     InvestigationResult,
 )
+from agents.reliability.anti_hallucination import AntiHallucinationValidator, AntiHallucinationError
 
 logger = logging.getLogger(__name__)
 
@@ -242,50 +245,285 @@ class DeterministicCoCoAdapter(CoCoInvestigationAdapter):
 class LiveCortexCoCoAdapter(CoCoInvestigationAdapter):
     """Adapter for live Snowflake Cortex LLM investigative reasoning."""
 
-    def __init__(self, model_name: str = "snowflake-arctic", connection_mgr: Any = None) -> None:
+    def __init__(
+        self,
+        model_name: str = "snowflake-arctic",
+        connection_mgr: Any = None,
+        enabled: bool = True,
+    ) -> None:
         self.model_name = model_name
         self.conn_mgr = connection_mgr
+        self.enabled = enabled
         self.fallback = DeterministicCoCoAdapter()
         self.last_execution_mode = "PENDING"
 
+    def _fallback_with_reason(self, context: InvestigationContext, reason: str) -> InvestigationResult:
+        """Produce deterministic fallback result with truthful provenance and explicit limitation."""
+        self.last_execution_mode = "DETERMINISTIC_FALLBACK"
+        res = self.fallback.reason(context)
+        res.limitations.append(f"Cortex LLM not utilized ({reason}); fell back to deterministic reasoning.")
+        res.provenance = {
+            "adapter": "LiveCortexCoCoAdapter",
+            "execution_mode": "DETERMINISTIC_FALLBACK",
+            "reason": reason,
+        }
+        return res
+
+    def _parse_and_validate_cortex_response(
+        self,
+        raw_text: str,
+        context: InvestigationContext,
+    ) -> Optional[InvestigationResult]:
+        """Parse Cortex LLM JSON response and validate against anti-hallucination rules."""
+        if not raw_text or not raw_text.strip():
+            logger.warning("Cortex returned empty or whitespace-only response.")
+            return None
+
+        text = raw_text.strip()
+        # Extract JSON substring if wrapped in markdown code blocks
+        if "```" in text:
+            match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+            if match:
+                text = match.group(1).strip()
+
+        # If still not starting with {, search for outermost { ... }
+        if not text.startswith("{"):
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                text = text[start : end + 1]
+
+        try:
+            payload = json.loads(text)
+        except Exception as exc:
+            logger.warning("Failed to parse Cortex response as JSON: %s (raw text: %.200s)", exc, raw_text)
+            return None
+
+        if not isinstance(payload, dict):
+            logger.warning("Cortex JSON payload is not a dictionary: %s", type(payload))
+            return None
+
+        mach_id = context.machine_id
+        inv_id = context.investigation_id
+        summary = payload.get("summary") or f"Autonomous investigation for {mach_id} completed via Cortex."
+
+        # Parse Hypotheses
+        hypotheses: List[Hypothesis] = []
+        raw_hyps = payload.get("hypotheses", [])
+        if isinstance(raw_hyps, list):
+            for idx, h_data in enumerate(raw_hyps):
+                if not isinstance(h_data, dict):
+                    continue
+                fmode_raw = h_data.get("failure_mode", "BEARING_DEGRADATION")
+                fmode = (
+                    FailureMode(fmode_raw)
+                    if isinstance(fmode_raw, str) and fmode_raw in FailureMode._value2member_map_
+                    else FailureMode.BEARING_DEGRADATION
+                )
+                supp_ids = h_data.get("supporting_evidence_ids", [])
+                if not isinstance(supp_ids, list):
+                    supp_ids = []
+                contra_ids = h_data.get("contradicting_evidence_ids", [])
+                if not isinstance(contra_ids, list):
+                    contra_ids = []
+
+                hyp = Hypothesis(
+                    hypothesis_id=str(h_data.get("hypothesis_id") or f"HYP-{mach_id}-{idx+1:02d}"),
+                    investigation_id=inv_id,
+                    hypothesis_name=str(h_data.get("hypothesis_name") or "Hypothesis"),
+                    statement=h_data.get("statement"),
+                    failure_mode=fmode,
+                    confidence=float(h_data.get("confidence", 0.85)),
+                    supporting_evidence_ids=[str(i) for i in supp_ids],
+                    contradicting_evidence_ids=[str(i) for i in contra_ids],
+                    status=str(h_data.get("status", "SUPPORTED")),
+                    rationale=str(h_data.get("rationale", "")),
+                )
+                hypotheses.append(hyp)
+
+        # Parse Findings
+        findings: List[Finding] = []
+        raw_findings = payload.get("findings", [])
+        if isinstance(raw_findings, list):
+            for idx, f_data in enumerate(raw_findings):
+                if not isinstance(f_data, dict):
+                    continue
+                fmode_raw = f_data.get("failure_mode", "BEARING_DEGRADATION")
+                fmode = (
+                    FailureMode(fmode_raw)
+                    if isinstance(fmode_raw, str) and fmode_raw in FailureMode._value2member_map_
+                    else FailureMode.BEARING_DEGRADATION
+                )
+                refs = f_data.get("evidence_refs") or f_data.get("supporting_evidence_ids") or []
+                if not isinstance(refs, list):
+                    refs = [refs] if refs else []
+
+                obs_facts = f_data.get("observed_facts", [])
+                if not isinstance(obs_facts, list):
+                    obs_facts = [obs_facts] if obs_facts else []
+
+                inferences = f_data.get("inferences", [])
+                if not isinstance(inferences, list):
+                    inferences = [inferences] if inferences else []
+
+                finding = Finding(
+                    finding_id=str(f_data.get("finding_id") or f"FIND-{mach_id}-{idx+1:02d}"),
+                    investigation_id=inv_id,
+                    summary=str(f_data.get("summary") or "Investigation finding"),
+                    statement=f_data.get("statement"),
+                    failure_mode=fmode,
+                    confidence=float(f_data.get("confidence", 0.90)),
+                    evidence_refs=[str(r) for r in refs],
+                    supporting_evidence_ids=[str(r) for r in refs],
+                    observed_facts=[str(o) for o in obs_facts],
+                    inferences=[str(inf) for inf in inferences],
+                )
+                findings.append(finding)
+
+        # Must have at least 1 finding
+        if not findings:
+            logger.warning("Cortex output contains zero valid findings.")
+            return None
+
+        # Parse Recommendations
+        recommendations: List[Recommendation] = []
+        raw_recs = payload.get("recommendations", [])
+        if isinstance(raw_recs, list):
+            for idx, r_data in enumerate(raw_recs):
+                if not isinstance(r_data, dict):
+                    continue
+                prio_raw = r_data.get("priority", "HIGH")
+                prio = (
+                    Priority(prio_raw)
+                    if isinstance(prio_raw, str) and prio_raw in Priority._value2member_map_
+                    else Priority.HIGH
+                )
+                refs = r_data.get("evidence_refs") or r_data.get("evidence_ids") or []
+                if not isinstance(refs, list):
+                    refs = [refs] if refs else []
+
+                parts = r_data.get("suggested_parts", [])
+                if not isinstance(parts, list):
+                    parts = [parts] if parts else []
+
+                checklist = r_data.get("suggested_checklist", [])
+                if not isinstance(checklist, list):
+                    checklist = [checklist] if checklist else []
+
+                rec = Recommendation(
+                    recommendation_id=str(r_data.get("recommendation_id") or f"REC-{mach_id}-{idx+1:02d}"),
+                    investigation_id=inv_id,
+                    title=str(r_data.get("title") or "Advisory Recommendation"),
+                    statement=r_data.get("statement"),
+                    action_type=str(r_data.get("action_type") or "INSPECT_BEARING_ASSEMBLY"),
+                    priority=prio,
+                    rationale=str(r_data.get("rationale") or ""),
+                    suggested_next_step=r_data.get("suggested_next_step"),
+                    action_required=bool(r_data.get("action_required", True)),
+                    status="ADVISORY",  # Strictly enforce ADVISORY
+                    estimated_downtime_hours=float(r_data.get("estimated_downtime_hours", 2.0)),
+                    suggested_parts=[str(p) for p in parts],
+                    suggested_checklist=[str(c) for c in checklist],
+                    evidence_ids=[str(r) for r in refs],
+                    evidence_refs=[str(r) for r in refs],
+                )
+                recommendations.append(rec)
+
+        # Must have at least 1 recommendation
+        if not recommendations:
+            logger.warning("Cortex output contains zero valid recommendations.")
+            return None
+
+        # Collect cited evidence references
+        all_refs: List[str] = []
+        for f in findings:
+            all_refs.extend(f.evidence_refs)
+        for r in recommendations:
+            all_refs.extend(r.evidence_refs)
+        deduped_refs = list(dict.fromkeys(all_refs))
+
+        limitations = payload.get("limitations", [])
+        if not isinstance(limitations, list):
+            limitations = [str(limitations)] if limitations else []
+
+        cortex_res = InvestigationResult(
+            investigation_id=inv_id,
+            machine_id=mach_id,
+            prediction_id=context.prediction.get("prediction_id") if context.prediction else None,
+            summary=summary,
+            hypotheses=hypotheses,
+            findings=findings,
+            recommendations=recommendations,
+            evidence_refs=deduped_refs,
+            limitations=[str(l) for l in limitations],
+            provenance={
+                "adapter": "LiveCortexCoCoAdapter",
+                "execution_mode": "LIVE_CORTEX",
+                "model": self.model_name,
+            },
+            status=InvestigationStatus.COMPLETED,
+        )
+
+        # Anti-hallucination validation against context evidence
+        validator = AntiHallucinationValidator(strict_evidence_check=True)
+        try:
+            validator.validate(
+                result=cortex_res,
+                evidence_pool=context.evidence_items,
+                expected_machine_id=mach_id,
+            )
+        except AntiHallucinationError as ahe:
+            logger.warning("Cortex output rejected by anti-hallucination validator: %s", ahe)
+            return None
+
+        return cortex_res
+
     def reason(self, context: InvestigationContext) -> InvestigationResult:
         """Call Snowflake Cortex LLM with structured evidence context and strict schema fallback."""
+        if not self.enabled:
+            logger.info("Live Cortex reasoning explicitly disabled; using deterministic fallback adapter.")
+            return self._fallback_with_reason(context, "Cortex integration explicitly disabled")
+
         if not self.conn_mgr:
             logger.info("Snowflake connection manager unavailable; using deterministic fallback adapter.")
-            self.last_execution_mode = "DETERMINISTIC_FALLBACK"
-            res = self.fallback.reason(context)
-            res.provenance = {"adapter": "LiveCortexCoCoAdapter", "execution_mode": "DETERMINISTIC_FALLBACK"}
-            return res
+            return self._fallback_with_reason(context, "Connection manager unavailable")
 
         # Attempt live Cortex call
         try:
             conn = self.conn_mgr.get_connection()
             cur = conn.cursor()
             try:
-                # Cortex LLM structured prompt
+                valid_ev_ids = [ev.evidence_id for ev in context.evidence_items]
                 prompt = (
                     f"You are CoCo, an expert industrial reliability investigation AI.\n"
                     f"Analyze this structured evidence bundle for machine {context.machine_id}:\n"
+                    f"Valid Evidence IDs: {valid_ev_ids}\n"
                     f"Evidence items: {[ev.model_dump(mode='json') for ev in context.evidence_items]}\n"
-                    f"Return structured findings and an ADVISORY recommendation. Never claim executed actions."
+                    f"Instructions:\n"
+                    f"1. Produce structured findings, hypotheses, and advisory recommendations strictly grounded in the provided Evidence items.\n"
+                    f"2. Every finding and recommendation MUST cite only existing valid evidence IDs from {valid_ev_ids}.\n"
+                    f"3. All recommendations must have status 'ADVISORY'. Never claim executed actions.\n"
+                    f"4. Respond ONLY with valid JSON with keys: summary, hypotheses, findings, recommendations, limitations."
                 )
                 cur.execute(
                     "SELECT SNOWFLAKE.CORTEX.COMPLETE(%s, %s)",
                     (self.model_name, prompt),
                 )
                 row = cur.fetchone()
-                if row and row[0]:
+                if not row or not row[0] or not str(row[0]).strip():
+                    logger.warning("Cortex returned empty output; falling back to deterministic adapter.")
+                    return self._fallback_with_reason(context, "Cortex returned empty output")
+
+                cortex_result = self._parse_and_validate_cortex_response(row[0], context)
+                if cortex_result is not None:
                     self.last_execution_mode = "LIVE_CORTEX"
-                    res = self.fallback.reason(context)
-                    res.provenance = {"adapter": "LiveCortexCoCoAdapter", "execution_mode": "LIVE_CORTEX", "model": self.model_name}
-                    return res
+                    return cortex_result
+
+                logger.warning("Cortex output could not be validated; falling back to deterministic adapter.")
+                return self._fallback_with_reason(context, "Cortex output failed validation or anti-hallucination checks")
             finally:
                 cur.close()
                 conn.close()
         except Exception as exc:
             logger.warning("Cortex execution failed (%s); falling back to deterministic adapter.", exc)
-
-        self.last_execution_mode = "DETERMINISTIC_FALLBACK"
-        res = self.fallback.reason(context)
-        res.provenance = {"adapter": "LiveCortexCoCoAdapter", "execution_mode": "DETERMINISTIC_FALLBACK"}
-        return res
+            return self._fallback_with_reason(context, f"Cortex execution error: {exc}")
