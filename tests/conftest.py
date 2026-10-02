@@ -1,7 +1,11 @@
 """Pytest test configuration and fixtures."""
 
+import os
 import sys
 from pathlib import Path
+
+# Default tests to isolated in-memory storage to prevent Snowflake network calls during unit tests
+os.environ["STORAGE_BACKEND"] = "in_memory"
 
 # Ensure root directory is on PYTHONPATH
 root_dir = Path(__file__).resolve().parent.parent

@@ -26,6 +26,7 @@ from app.streamlit.components.sidebar import render_sidebar
 from app.streamlit.components.styles import apply_industrial_theme
 from app.streamlit.services.view_service import get_facade
 from app.streamlit.state import init_session_state, navigate_to
+from config import get_config
 from app.streamlit.views import (
     render_agent_activity_view,
     render_assets_view,
@@ -63,7 +64,7 @@ def main() -> None:
 
     # 4. Storage Backend Selection & Facade Instantiation
     if "backend_mode" not in st.session_state:
-        st.session_state.backend_mode = "in_memory"
+        st.session_state.backend_mode = get_config().storage_backend
 
     backend_error = None
     facade = None

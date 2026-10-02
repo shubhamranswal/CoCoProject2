@@ -63,6 +63,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
     provenance = detail.get("provenance") or getattr(inv, "provenance", {}) or {}
     tool_calls = detail.get("tool_calls", [])
     machine_name = detail.get("machine_name") or inv.machine_id
+    action_proposal = detail.get("action_proposal")
     app = detail.get("approval")
     wo = detail.get("work_order")
 
@@ -298,12 +299,26 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
                 if rec_ev_badges else ""
             )
 
+            # Status badge logic based on governed proposal state
+            is_proposed = action_proposal and (
+                getattr(action_proposal, "recommendation_id", None) == rec.recommendation_id
+                or len(recommendations) == 1
+            )
+            if is_proposed and action_proposal.status == "PENDING_APPROVAL":
+                status_badge = '<span class="badge badge-warning" style="font-weight: 700;">PENDING HUMAN APPROVAL</span>'
+            elif is_proposed and action_proposal.status == "APPROVED":
+                status_badge = '<span class="badge badge-healthy" style="font-weight: 700;">APPROVED — READY FOR SEPARATE GOVERNED EXECUTION</span>'
+            elif is_proposed and action_proposal.status == "REJECTED":
+                status_badge = '<span class="badge badge-critical" style="font-weight: 700;">PROPOSAL REJECTED</span>'
+            else:
+                status_badge = '<span class="badge badge-info" style="font-weight: 700;">STATUS: ADVISORY (NON-EXECUTABLE)</span>'
+
             st.markdown(
                 f"""
                 <div class="ind-card" style="border-left: 4px solid #0284c7;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
                         <div>
-                            <span class="badge badge-info" style="font-weight: 700;">STATUS: ADVISORY (NON-EXECUTABLE)</span>
+                            {status_badge}
                             <span class="badge badge-critical" style="margin-left: 6px;">PRIORITY: {priority_val}</span>
                             <span class="badge badge-neutral" style="margin-left: 6px;">ACTION: {rec.action_type}</span>
                         </div>
@@ -328,6 +343,25 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
                 unsafe_allow_html=True,
             )
 
+            # Explicit human submission button when no proposal exists yet
+            if not is_proposed:
+                col_btn, col_info = st.columns([1, 2])
+                with col_btn:
+                    if st.button(
+                        "Submit for Human Approval",
+                        key=f"submit_proposal_btn_{rec.recommendation_id}",
+                        type="primary",
+                        help="Submit this advisory recommendation to the Human Approval Gateway. Does NOT execute actions or dispatch work orders.",
+                    ):
+                        facade.submit_action_proposal_for_recommendation(
+                            investigation_id=inv.investigation_id,
+                            recommendation_id=rec.recommendation_id,
+                        )
+                        st.session_state.last_action_message = f"Action proposal submitted for {rec.recommendation_id}. Awaiting human authorization."
+                        st.rerun()
+                with col_info:
+                    st.caption("Advisory recommendation. Submitting creates a governed action proposal requiring explicit operator authorization.")
+
     # 5. Governed Tool Audit Ledger Expander
     if tool_calls:
         with st.expander(f"Governed Read Tool Audit Ledger ({len(tool_calls)} Invocations)", expanded=False):
@@ -349,9 +383,9 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
     render_approval_panel(
         approval=app,
         investigation=inv,
+        action_proposal=action_proposal,
         on_approve=lambda a_id, actor, r: facade.approve_action(a_id, actor, r),
         on_reject=lambda a_id, actor, r: facade.reject_action(a_id, actor, r),
-        on_create_work_order=lambda a_id, actor: facade.create_work_order_from_approval(a_id, actor),
     )
 
     # If work order already created, show link button to navigate

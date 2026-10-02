@@ -29,6 +29,7 @@ from domain.enums import (
     WorkOrderStatus,
 )
 from domain.models import (
+    ActionProposal,
     Alert,
     Approval,
     AuditEvent,
@@ -60,6 +61,7 @@ from repositories.base import (
     ReliabilityRepository,
     TelemetryRepository,
 )
+from services.approval_gateway import ApprovalGateway
 from services.approval_service import ApprovalService
 from services.oee_service import OEEResult, OEEService
 from services.pipeline_orchestrator import PipelineExecutionResult, PipelineOrchestrator
@@ -88,6 +90,7 @@ class CommandCenterFacade:
         )
         self.oee_service = OEEService()
         self.approval_service = ApprovalService(repository=self.repo)
+        self.approval_gateway = ApprovalGateway(repository=self.repo, approval_service=self.approval_service)
         self.work_order_service = WorkOrderService(repository=self.repo, governance_repo=self.repo)
         self.verification_service = VerificationService(
             repository=self.repo,
@@ -190,8 +193,114 @@ class CommandCenterFacade:
         """Execute canonical investigation request directly."""
         return self.investigation_service.investigate(request)
 
+    def submit_action_proposal_for_recommendation(
+        self, investigation_id: str, recommendation_id: Optional[str] = None
+    ) -> ActionProposal:
+        """Bridge an advisory recommendation to a governed ACTION_PROPOSAL pending human approval."""
+        inv = self.repo.get_investigation(investigation_id)
+        if not inv:
+            raise ValueError(f"Investigation '{investigation_id}' not found.")
+
+        # Find matching recommendation
+        rec = None
+        if recommendation_id and getattr(inv, "recommendations", None):
+            for r in inv.recommendations:
+                if r.recommendation_id == recommendation_id:
+                    rec = r
+                    break
+        if not rec:
+            rec = getattr(inv, "recommendation", None)
+        if not rec and getattr(inv, "recommendations", None):
+            rec = inv.recommendations[0]
+
+        if not rec:
+            raise ValueError(f"No recommendation found for investigation '{investigation_id}'.")
+
+        # Check if proposal already exists
+        if hasattr(self.repo, "list_action_proposals"):
+            existing = [
+                p for p in self.repo.list_action_proposals(machine_id=inv.machine_id)
+                if p.investigation_id == investigation_id and p.recommendation_id == rec.recommendation_id
+            ]
+            if existing:
+                return existing[0]
+
+        # Construct ActionProposal using existing domain contracts
+        inv_suffix = inv.investigation_id.split("-")[-1] if "-" in inv.investigation_id else inv.investigation_id
+        prop_id = f"PROP-{inv.machine_id}-{inv_suffix}-{rec.recommendation_id}"
+
+        # Resolve component_id
+        component_id = getattr(inv, "component_id", None)
+        if not component_id and getattr(inv, "finding", None):
+            component_id = getattr(inv.finding, "component_id", None)
+        if not component_id:
+            component_id = "BEARING_001"
+
+        evidence_ids = getattr(rec, "evidence_refs", None) or getattr(rec, "evidence_ids", None) or []
+
+        proposal = ActionProposal(
+            action_proposal_id=prop_id,
+            investigation_id=inv.investigation_id,
+            action_type=getattr(rec, "action_type", "INSPECT_BEARING_ASSEMBLY") or "INSPECT_BEARING_ASSEMBLY",
+            machine_id=inv.machine_id,
+            component_id=component_id,
+            priority=getattr(rec, "priority", Priority.HIGH) or Priority.HIGH,
+            reason=getattr(rec, "rationale", "") or getattr(rec, "title", "") or "Operational recommendation from investigation",
+            recommendation_id=rec.recommendation_id,
+            evidence_ids=list(evidence_ids),
+            risk_level="HIGH",
+            requires_approval=True,
+            parameters={
+                "title": getattr(rec, "title", ""),
+                "action_description": getattr(rec, "action_description", ""),
+                "suggested_parts": getattr(rec, "suggested_parts", []),
+                "suggested_checklist": getattr(rec, "suggested_checklist", []),
+                "estimated_downtime_hours": getattr(rec, "estimated_downtime_hours", 2.0),
+                "suggested_next_step": getattr(rec, "suggested_next_step", None),
+            },
+            status="PROPOSED",
+            idempotency_key=f"IDEM-{prop_id}",
+        )
+
+        return self.approval_gateway.submit_proposal(proposal)
+
+    def approve_proposal(
+        self,
+        proposal_id: str,
+        approver_id: str,
+        reason: str,
+    ) -> Approval:
+        """Approve an action proposal via the governed ApprovalGateway."""
+        return self.approval_gateway.approve_proposal(
+            proposal_id=proposal_id,
+            approver_id=approver_id,
+            reason=reason,
+        )
+
+    def reject_proposal(
+        self,
+        proposal_id: str,
+        approver_id: str,
+        reason: str,
+    ) -> Approval:
+        """Reject an action proposal via the governed ApprovalGateway."""
+        return self.approval_gateway.reject_proposal(
+            proposal_id=proposal_id,
+            approver_id=approver_id,
+            reason=reason,
+        )
+
     def approve_action(self, approval_id: str, approver_id: str, reason: str) -> Approval:
         """Submit authenticated human approval for an operational action."""
+        if approval_id.startswith("APP-PROP-") and hasattr(self.repo, "get_action_proposal"):
+            prop_id = approval_id[4:]
+            prop = self.repo.get_action_proposal(prop_id)
+            if prop:
+                return self.approval_gateway.approve_proposal(
+                    proposal_id=prop_id,
+                    approver_id=approver_id,
+                    reason=reason,
+                )
         return self.approval_service.approve_action(
             approval_id=approval_id,
             approver_id=approver_id,
@@ -200,6 +309,15 @@ class CommandCenterFacade:
 
     def reject_action(self, approval_id: str, approver_id: str, reason: str) -> Approval:
         """Submit authenticated human rejection for an operational action."""
+        if approval_id.startswith("APP-PROP-") and hasattr(self.repo, "get_action_proposal"):
+            prop_id = approval_id[4:]
+            prop = self.repo.get_action_proposal(prop_id)
+            if prop:
+                return self.approval_gateway.reject_proposal(
+                    proposal_id=prop_id,
+                    approver_id=approver_id,
+                    reason=reason,
+                )
         return self.approval_service.reject_action(
             approval_id=approval_id,
             approver_id=approver_id,
@@ -612,6 +730,23 @@ class CommandCenterFacade:
 
         all_apps = self.repo.list_approvals(machine_id=inv.machine_id)
         matching_apps = [app for app in all_apps if app.investigation_id == investigation_id]
+
+        # Check action proposal
+        action_proposal = getattr(inv, "action_proposal", None)
+        if not action_proposal and hasattr(self.repo, "list_action_proposals"):
+            proposals = [
+                p for p in self.repo.list_action_proposals(machine_id=inv.machine_id)
+                if p.investigation_id == investigation_id
+            ]
+            if proposals:
+                action_proposal = proposals[0]
+
+        if not matching_apps and action_proposal:
+            matching_apps = [
+                app for app in all_apps
+                if app.action_proposal_id == action_proposal.proposal_id
+                or app.approval_id == f"APP-{action_proposal.proposal_id}"
+            ]
         app = matching_apps[0] if matching_apps else None
 
         work_orders = [
@@ -634,7 +769,7 @@ class CommandCenterFacade:
             "findings": inv.findings,
             "recommendation": inv.recommendation,
             "recommendations": inv.recommendations,
-            "action_proposal": inv.action_proposal,
+            "action_proposal": action_proposal,
             "evidence": inv.evidence,
             "hypotheses": inv.hypotheses,
             "approval": app,
