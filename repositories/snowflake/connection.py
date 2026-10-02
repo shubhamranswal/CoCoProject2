@@ -109,19 +109,27 @@ class SnowflakeConnectionManager:
             raise ValueError(f"Failed to load Snowflake private key: {err}") from None
 
     def _build_connect_params(
-        self, login_timeout: int = 15, network_timeout: int = 30
+        self, login_timeout: int = 15, network_timeout: int = 30, include_database: bool = True
     ) -> Dict[str, Any]:
-        """Construct validated connect kwargs with credentials protected."""
+        """Construct validated connect kwargs with credentials protected.
+        
+        When include_database=False, omits database and schema from connection parameters,
+        allowing bootstrap connection to clean Snowflake accounts where the database does not yet exist.
+        """
         params: Dict[str, Any] = {
             "account": self.config.account,
             "user": self.config.user,
             "warehouse": self.config.warehouse,
-            "database": self.config.database,
-            "schema": self.config.schema,
             "role": self.config.role,
             "login_timeout": login_timeout,
             "network_timeout": network_timeout,
         }
+
+        if include_database:
+            if self.config.database:
+                params["database"] = self.config.database
+            if self.config.schema:
+                params["schema"] = self.config.schema
 
         if self.config.authenticator and self.config.authenticator.lower() != "snowflake":
             params["authenticator"] = self.config.authenticator
@@ -158,15 +166,21 @@ class SnowflakeConnectionManager:
             logger.error("Snowflake connection failed: %s", err_msg)
             return False, f"Snowflake connection failed: {err_msg}"
 
-    def get_connection(self) -> Any:
-        """Return an active connection or raise an explicit error."""
+    def get_connection(self, bootstrap: bool = False) -> Any:
+        """Return an active connection or raise an explicit error.
+        
+        When bootstrap=True, connects without specifying database/schema at handshake time,
+        allowing administrative bootstrap (CREATE DATABASE / CREATE SCHEMA) on a clean account.
+        """
         if not self.config.is_configured:
             raise ConnectionError("Snowflake is not configured. Set environment variables to enable Snowflake backend.")
 
         try:
             import snowflake.connector  # type: ignore
 
-            connect_params = self._build_connect_params(login_timeout=15, network_timeout=30)
+            connect_params = self._build_connect_params(
+                login_timeout=15, network_timeout=30, include_database=not bootstrap
+            )
             return snowflake.connector.connect(**connect_params)
         except ImportError:
             raise RuntimeError("snowflake-connector-python must be installed to connect to Snowflake.")
@@ -174,8 +188,20 @@ class SnowflakeConnectionManager:
             err_msg = self._mask_secrets(str(e))
             raise ConnectionError(f"Failed to connect to Snowflake: {err_msg}") from None
 
-    def verify_connection(self) -> SnowflakeSessionVerification:
+    def get_bootstrap_connection(self) -> Any:
+        """Return an active connection without requiring database/schema context to already exist."""
+        return self.get_connection(bootstrap=True)
+
+    def verify_connection(self, bootstrap: bool = False) -> SnowflakeSessionVerification:
         """Perform a structured ping testing role, warehouse, database, schema, and session parameters."""
+        return self.verify_session(bootstrap=bootstrap)
+
+    def verify_session(self, bootstrap: bool = False) -> SnowflakeSessionVerification:
+        """Perform a structured ping testing role, warehouse, database, schema, and session parameters.
+        
+        When bootstrap=True, connects at account-level without database/schema parameters,
+        verifying that credentials, role, and warehouse are valid before database creation.
+        """
         now = datetime.now(timezone.utc)
         if not self.config.is_configured:
             return SnowflakeSessionVerification(
@@ -193,7 +219,9 @@ class SnowflakeConnectionManager:
         try:
             import snowflake.connector  # type: ignore
 
-            connect_params = self._build_connect_params(login_timeout=10, network_timeout=15)
+            connect_params = self._build_connect_params(
+                login_timeout=10, network_timeout=15, include_database=not bootstrap
+            )
             conn = snowflake.connector.connect(**connect_params)
             cur = conn.cursor()
             cur.execute(
@@ -215,8 +243,8 @@ class SnowflakeConnectionManager:
                 user=row[1] if row else self.config.user,
                 role=row[2] if row else self.config.role,
                 warehouse=row[3] if row else self.config.warehouse,
-                database=row[4] if row else self.config.database,
-                schema=row[5] if row else self.config.schema,
+                database=row[4] if row else None,
+                schema=row[5] if row else None,
                 latency_ms=latency,
                 checked_at=now,
             )

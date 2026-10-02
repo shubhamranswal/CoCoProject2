@@ -11,7 +11,19 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
+
+try:
+    from dotenv import load_dotenv
+
+    env_path = Path(__file__).resolve().parent / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+    else:
+        load_dotenv()
+except ImportError:
+    pass
 
 StorageBackendType = Literal["in_memory", "snowflake"]
 EnvironmentType = Literal["development", "test", "demo", "production"]

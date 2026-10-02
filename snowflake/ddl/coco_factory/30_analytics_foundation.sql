@@ -68,11 +68,10 @@ calendar_machines AS (
         m.machine_type,
         m.plant_id,
         m.line_id,
-        COALESCE(pl.name, m.line_id) AS line_name,
+        m.line_id AS line_name,
         m.criticality,
         t.metric_date
     FROM COCO_FACTORY.CORE.MACHINE m
-    LEFT JOIN COCO_FACTORY.CORE.PRODUCTION_LINE pl ON m.line_id = pl.line_id
     CROSS JOIN (
         SELECT DISTINCT DATE(ts) AS metric_date FROM COCO_FACTORY.CORE.SENSOR_READING_HOURLY
     ) t

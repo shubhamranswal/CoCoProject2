@@ -673,13 +673,18 @@ WHEN NOT MATCHED THEN INSERT (
     s.sensor_id, s.ts, s.run_fraction, s.avg_running, s.min_running, s.max_running
 );
 
--- 19. Transform SENSOR_READING (High Frequency Telemetry) - Idempotent
-TRUNCATE TABLE CORE.SENSOR_READING;
+-- 19. Transform SENSOR_READING (High Frequency Telemetry) - Atomic Transient Swap
+CREATE OR REPLACE TRANSIENT TABLE CORE.SENSOR_READING_STAGE LIKE CORE.SENSOR_READING;
 
-INSERT INTO CORE.SENSOR_READING (sensor_id, ts, value)
+INSERT INTO CORE.SENSOR_READING_STAGE (sensor_id, ts, value)
 SELECT
     TRIM(sensor_id) AS sensor_id,
     TRY_TO_TIMESTAMP_NTZ(ts) AS ts,
     TRY_TO_DOUBLE(value) AS value
 FROM RAW.SENSOR_READING
-WHERE sensor_id IS NOT NULL AND ts IS NOT NULL AND value IS NOT NULL;
+WHERE sensor_id IS NOT NULL AND ts IS NOT NULL AND value IS NOT NULL
+  AND _batch_id = (SELECT MAX(_batch_id) FROM RAW.SENSOR_READING);
+
+ALTER TABLE CORE.SENSOR_READING SWAP WITH CORE.SENSOR_READING_STAGE;
+
+DROP TABLE IF EXISTS CORE.SENSOR_READING_STAGE;

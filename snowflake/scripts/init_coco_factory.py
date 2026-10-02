@@ -101,6 +101,7 @@ def initialize_coco_factory(
     transform_data: bool = False,
     verify: bool = False,
     batch_id: Optional[str] = None,
+    bootstrap: bool = True,
 ) -> Tuple[bool, str]:
     """Execute all foundation DDL and optional pipelines with dynamic batch lineage."""
     ddl_dir = project_root / "snowflake" / "ddl" / "coco_factory"
@@ -144,7 +145,7 @@ def initialize_coco_factory(
         return False, "Snowflake credentials not configured in environment. Use --dry-run for syntax validation."
 
     try:
-        conn = mgr.get_connection()
+        conn = mgr.get_connection(bootstrap=bootstrap)
         cur = conn.cursor()
         try:
             total_executed = 0
@@ -156,6 +157,20 @@ def initialize_coco_factory(
                     cur.execute(stmt)
                     total_executed += 1
                 logger.info("Executed %d statements from %s", len(statements), name)
+
+            # Explicitly establish and validate post-bootstrap database and schema context
+            target_db = getattr(mgr.config, "database", "COCO_FACTORY") or "COCO_FACTORY"
+            target_schema = getattr(mgr.config, "schema", "CORE") or "CORE"
+            cur.execute(f"USE DATABASE {target_db}")
+            cur.execute(f"USE SCHEMA {target_schema}")
+            cur.execute("SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()")
+            ctx_row = cur.fetchone()
+            logger.info(
+                "Post-bootstrap context verified: database=%s, schema=%s",
+                ctx_row[0] if ctx_row else None,
+                ctx_row[1] if ctx_row else None,
+            )
+
             conn.commit()
             msg = f"Successfully deployed COCO_FACTORY: {len(plan)} scripts executed ({total_executed} statements). Batch ID: {effective_batch_id}"
             logger.info(msg)

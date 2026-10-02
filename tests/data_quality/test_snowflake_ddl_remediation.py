@@ -59,19 +59,26 @@ class TestSnowflakeDDLRemediation:
         assert success
         assert custom_id in message
 
-    def test_telemetry_truncate_before_insert(self, ddl_root: Path):
-        """Verifies that TRUNCATE TABLE CORE.SENSOR_READING precedes the INSERT INTO statement."""
+    def test_telemetry_atomic_swap_rebuild(self, ddl_root: Path):
+        """Verifies failure-safe atomic rebuild strategy with transient staging table and swap."""
         sql_file = ddl_root / "80_core_conformed_transforms.sql"
         assert sql_file.exists()
         content = sql_file.read_text(encoding="utf-8")
 
-        truncate_pos = content.find("TRUNCATE TABLE CORE.SENSOR_READING;")
-        insert_pos = content.find("INSERT INTO CORE.SENSOR_READING")
+        stage_create_pos = content.find("CREATE OR REPLACE TRANSIENT TABLE CORE.SENSOR_READING_STAGE")
+        insert_pos = content.find("INSERT INTO CORE.SENSOR_READING_STAGE")
+        swap_pos = content.find("ALTER TABLE CORE.SENSOR_READING SWAP WITH CORE.SENSOR_READING_STAGE;")
+        drop_pos = content.find("DROP TABLE IF EXISTS CORE.SENSOR_READING_STAGE;")
 
-        assert truncate_pos != -1, "TRUNCATE TABLE CORE.SENSOR_READING; was not found."
-        assert insert_pos != -1, "INSERT INTO CORE.SENSOR_READING was not found."
-        assert truncate_pos < insert_pos, "TRUNCATE statement must appear BEFORE INSERT INTO statement."
+        assert stage_create_pos != -1, "Transient staging table creation was not found."
+        assert insert_pos != -1, "Insert into transient staging table was not found."
+        assert swap_pos != -1, "Atomic swap statement was not found."
+        assert drop_pos != -1, "Cleanup drop statement was not found."
 
-        # Verify that the truncate statement appears in parsed statements
+        assert stage_create_pos < insert_pos < swap_pos < drop_pos, (
+            "Statements must execute in sequence: CREATE STAGE -> INSERT STAGE -> SWAP -> DROP STAGE"
+        )
+
         statements = parse_sql_statements(content)
-        assert "TRUNCATE TABLE CORE.SENSOR_READING" in statements
+        assert any("CREATE OR REPLACE TRANSIENT TABLE CORE.SENSOR_READING_STAGE" in s for s in statements)
+        assert any("SWAP WITH CORE.SENSOR_READING_STAGE" in s for s in statements)
