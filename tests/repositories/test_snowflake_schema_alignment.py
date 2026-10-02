@@ -340,9 +340,9 @@ def test_app_governance_investigation_and_approval(repo: SnowflakeRepository, mo
     created_inv = repo.create_investigation(inv)
     assert created_inv.investigation_id == "INV-001"
     sql, params = cur.execute.call_args[0]
-    assert "INSERT INTO COCO_FACTORY.APP.INVESTIGATION" in sql
+    assert "COCO_FACTORY.APP.INVESTIGATION" in sql
     assert params[0] == "INV-001"
-    assert params[2] == "M21"
+    assert "M21" in params
 
     # Action Approval
     appr = Approval(

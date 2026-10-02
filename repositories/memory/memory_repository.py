@@ -27,14 +27,18 @@ from domain.models import (
     Failure,
     FailureRisk,
     FeatureVector,
+    Finding,
     HealthAssessment,
+    Hypothesis,
     Investigation,
     Machine,
     MaintenanceEvent,
     Plant,
     ProductionLine,
+    Recommendation,
     Sensor,
     TelemetryMeasurement,
+    ToolCall,
     Verification,
     VerificationResult,
     VerificationPolicy,
@@ -237,6 +241,10 @@ class InMemoryRepository(
         self._action_executions: Dict[str, ActionExecution] = {}
         self._action_outcomes: Dict[str, ActionOutcome] = {}
         self._verification_policies: Dict[str, VerificationPolicy] = {}
+        self._hypotheses: Dict[str, List[Hypothesis]] = {}
+        self._findings: Dict[str, List[Finding]] = {}
+        self._recommendations: Dict[str, List[Recommendation]] = {}
+        self._tool_calls: Dict[str, List[ToolCall]] = {}
 
         if seed:
             self._seed_reference_data()
@@ -640,6 +648,137 @@ class InMemoryRepository(
                     existing_ids = {e.evidence_id for e in inv.evidence}
                     if ev.evidence_id not in existing_ids:
                         inv.evidence.append(ev)
+
+    def save_hypotheses(self, hypotheses: List[Hypothesis]) -> None:
+        with self._lock:
+            for hyp in hypotheses:
+                inv_list = self._hypotheses.setdefault(hyp.investigation_id, [])
+                existing_ids = {h.hypothesis_id for h in inv_list}
+                if hyp.hypothesis_id not in existing_ids:
+                    inv_list.append(hyp)
+                else:
+                    # Update existing
+                    self._hypotheses[hyp.investigation_id] = [
+                        hyp if h.hypothesis_id == hyp.hypothesis_id else h for h in inv_list
+                    ]
+                inv = self._investigations.get(hyp.investigation_id)
+                if inv:
+                    inv_h_ids = {h.hypothesis_id for h in inv.hypotheses}
+                    if hyp.hypothesis_id not in inv_h_ids:
+                        inv.hypotheses.append(hyp)
+                    else:
+                        inv.hypotheses = [
+                            hyp if h.hypothesis_id == hyp.hypothesis_id else h for h in inv.hypotheses
+                        ]
+
+    def get_hypotheses(self, investigation_id: str) -> List[Hypothesis]:
+        with self._lock:
+            inv = self._investigations.get(investigation_id)
+            if inv and inv.hypotheses:
+                return list(inv.hypotheses)
+            return list(self._hypotheses.get(investigation_id, []))
+
+    def save_findings(self, findings: List[Finding]) -> None:
+        with self._lock:
+            for f in findings:
+                inv_list = self._findings.setdefault(f.investigation_id, [])
+                existing_ids = {item.finding_id for item in inv_list}
+                if f.finding_id not in existing_ids:
+                    inv_list.append(f)
+                else:
+                    self._findings[f.investigation_id] = [
+                        f if item.finding_id == f.finding_id else item for item in inv_list
+                    ]
+                inv = self._investigations.get(f.investigation_id)
+                if inv:
+                    inv_f_ids = {item.finding_id for item in inv.findings}
+                    if f.finding_id not in inv_f_ids:
+                        inv.findings.append(f)
+                    else:
+                        inv.findings = [
+                            f if item.finding_id == f.finding_id else item for item in inv.findings
+                        ]
+                    if not inv.finding:
+                        inv.finding = f
+
+    def get_findings(self, investigation_id: str) -> List[Finding]:
+        with self._lock:
+            inv = self._investigations.get(investigation_id)
+            if inv and inv.findings:
+                return list(inv.findings)
+            return list(self._findings.get(investigation_id, []))
+
+    def save_recommendations(self, recommendations: List[Recommendation]) -> None:
+        with self._lock:
+            for r in recommendations:
+                inv_list = self._recommendations.setdefault(r.investigation_id, [])
+                existing_ids = {item.recommendation_id for item in inv_list}
+                if r.recommendation_id not in existing_ids:
+                    inv_list.append(r)
+                else:
+                    self._recommendations[r.investigation_id] = [
+                        r if item.recommendation_id == r.recommendation_id else item for item in inv_list
+                    ]
+                inv = self._investigations.get(r.investigation_id)
+                if inv:
+                    inv_r_ids = {item.recommendation_id for item in inv.recommendations}
+                    if r.recommendation_id not in inv_r_ids:
+                        inv.recommendations.append(r)
+                    else:
+                        inv.recommendations = [
+                            r if item.recommendation_id == r.recommendation_id else item for item in inv.recommendations
+                        ]
+                    if not inv.recommendation:
+                        inv.recommendation = r
+
+    def get_recommendations(self, investigation_id: str) -> List[Recommendation]:
+        with self._lock:
+            inv = self._investigations.get(investigation_id)
+            if inv and inv.recommendations:
+                return list(inv.recommendations)
+            return list(self._recommendations.get(investigation_id, []))
+
+    def save_tool_calls(
+        self, tool_calls: List[ToolCall], investigation_id: Optional[str] = None
+    ) -> None:
+        with self._lock:
+            for tc in tool_calls:
+                inv_id = investigation_id or tc.execution_id or "ADHOC"
+                inv_list = self._tool_calls.setdefault(inv_id, [])
+                existing_ids = {item.tool_call_id for item in inv_list}
+                if tc.tool_call_id not in existing_ids:
+                    inv_list.append(tc)
+                else:
+                    self._tool_calls[inv_id] = [
+                        tc if item.tool_call_id == tc.tool_call_id else item for item in inv_list
+                    ]
+
+    def get_tool_calls(self, investigation_id: str) -> List[ToolCall]:
+        with self._lock:
+            return list(self._tool_calls.get(investigation_id, []))
+
+    def save_investigation_bundle(
+        self,
+        investigation: Investigation,
+        evidence: Optional[List[Evidence]] = None,
+        hypotheses: Optional[List[Hypothesis]] = None,
+        findings: Optional[List[Finding]] = None,
+        recommendations: Optional[List[Recommendation]] = None,
+        tool_calls: Optional[List[ToolCall]] = None,
+    ) -> Investigation:
+        with self._lock:
+            self.create_investigation(investigation)
+            if evidence:
+                self.save_evidence(evidence)
+            if hypotheses:
+                self.save_hypotheses(hypotheses)
+            if findings:
+                self.save_findings(findings)
+            if recommendations:
+                self.save_recommendations(recommendations)
+            if tool_calls:
+                self.save_tool_calls(tool_calls, investigation_id=investigation.investigation_id)
+            return investigation
 
     def update_investigation(self, investigation: Investigation) -> Investigation:
         with self._lock:

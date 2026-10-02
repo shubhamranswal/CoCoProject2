@@ -26,7 +26,9 @@ from domain.models import (
     Failure,
     FailureRisk,
     FeatureVector,
+    Finding,
     HealthAssessment,
+    Hypothesis,
     Investigation,
     Machine,
     MaintenanceEvent,
@@ -34,8 +36,10 @@ from domain.models import (
     Plant,
     PredictionOutcome,
     ProductionLine,
+    Recommendation,
     Sensor,
     TelemetryMeasurement,
+    ToolCall,
     Verification,
     VerificationResult,
     VerificationPolicy,
@@ -1375,25 +1379,423 @@ class SnowflakeRepository(
             cur.close()
             conn.close()
 
+    def _merge_investigation_record(self, cur: Any, investigation: Investigation) -> None:
+        trig_type = investigation.trigger_type.value if hasattr(investigation.trigger_type, "value") else str(investigation.trigger_type or "PREDICTION")
+        status_val = investigation.status.value if hasattr(investigation.status, "value") else str(investigation.status or "COMPLETED")
+        fmode_val = investigation.failure_mode.value if hasattr(investigation.failure_mode, "value") else str(investigation.failure_mode or "BEARING_DEGRADATION")
+        start_ts = investigation.started_at.isoformat() if investigation.started_at else None
+        comp_ts = investigation.completed_at.isoformat() if investigation.completed_at else None
+        created_ts = investigation.created_at.isoformat() if hasattr(investigation.created_at, "isoformat") else str(investigation.created_at)
+
+        limitations_json = json.dumps(investigation.limitations) if investigation.limitations else None
+        provenance_json = json.dumps(investigation.provenance) if investigation.provenance else None
+
+        cur.execute(
+            """
+            MERGE INTO COCO_FACTORY.APP.INVESTIGATION target
+            USING (SELECT %s AS investigation_id) src
+            ON target.investigation_id = src.investigation_id
+            WHEN MATCHED THEN UPDATE SET
+                trigger_type = %s,
+                trigger_id = %s,
+                prediction_id = %s,
+                alert_id = %s,
+                machine_id = %s,
+                component_id = %s,
+                scope = %s,
+                status = %s,
+                failure_mode = %s,
+                confidence = %s,
+                summary = %s,
+                limitations = TRY_PARSE_JSON(%s),
+                provenance = TRY_PARSE_JSON(%s),
+                started_at = %s,
+                completed_at = %s
+            WHEN NOT MATCHED THEN INSERT (
+                investigation_id, trigger_type, trigger_id, prediction_id, alert_id,
+                machine_id, component_id, scope, status, failure_mode, confidence,
+                summary, limitations, provenance, started_at, completed_at, created_at
+            ) VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s,
+                %s, TRY_PARSE_JSON(%s), TRY_PARSE_JSON(%s), %s, %s, %s
+            )
+            """,
+            (
+                investigation.investigation_id,
+                trig_type,
+                investigation.trigger_id or investigation.prediction_id,
+                investigation.prediction_id,
+                investigation.alert_id,
+                investigation.machine_id,
+                investigation.component_id,
+                investigation.scope or "EQUIPMENT_RELIABILITY",
+                status_val,
+                fmode_val,
+                investigation.confidence,
+                investigation.summary,
+                limitations_json,
+                provenance_json,
+                start_ts,
+                comp_ts,
+                # INSERT bindings
+                investigation.investigation_id,
+                trig_type,
+                investigation.trigger_id or investigation.prediction_id,
+                investigation.prediction_id,
+                investigation.alert_id,
+                investigation.machine_id,
+                investigation.component_id,
+                investigation.scope or "EQUIPMENT_RELIABILITY",
+                status_val,
+                fmode_val,
+                investigation.confidence,
+                investigation.summary,
+                limitations_json,
+                provenance_json,
+                start_ts,
+                comp_ts,
+                created_ts,
+            ),
+        )
+
+    def _merge_evidence_records(self, cur: Any, evidence: List[Evidence]) -> None:
+        for ev in evidence:
+            coll_ts = ev.timestamp.isoformat() if hasattr(ev.timestamp, "isoformat") else str(ev.timestamp) if ev.timestamp else None
+            obs_str = str(ev.observed_value)[:512] if ev.observed_value is not None else None
+            claim_str = ev.claim[:2048] if ev.claim else None
+            summary_str = ev.summary[:2048] if ev.summary else None
+            src_ref = ev.source_reference[:256] if ev.source_reference else None
+            cur.execute(
+                """
+                MERGE INTO COCO_FACTORY.APP.INVESTIGATION_EVIDENCE target
+                USING (SELECT %s AS evidence_id) src
+                ON target.evidence_id = src.evidence_id
+                WHEN MATCHED THEN UPDATE SET
+                    investigation_id = %s,
+                    evidence_type = %s,
+                    category = %s,
+                    source = %s,
+                    source_type = %s,
+                    source_id = %s,
+                    metric = %s,
+                    observed_value = %s,
+                    unit = %s,
+                    severity = %s,
+                    relationship = %s,
+                    machine_id = %s,
+                    component_id = %s,
+                    claim = %s,
+                    summary = %s,
+                    source_reference = %s,
+                    collected_at = %s
+                WHEN NOT MATCHED THEN INSERT (
+                    evidence_id, investigation_id, evidence_type, category, source,
+                    source_type, source_id, metric, observed_value, unit, severity,
+                    relationship, machine_id, component_id, claim, summary, source_reference, collected_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s
+                )
+                """,
+                (
+                    ev.evidence_id,
+                    ev.investigation_id,
+                    ev.evidence_type,
+                    ev.category or ev.evidence_type or "TELEMETRY",
+                    ev.source,
+                    ev.source_type,
+                    ev.source_id,
+                    ev.metric,
+                    obs_str,
+                    ev.unit,
+                    ev.severity,
+                    ev.relationship or "SUPPORTS",
+                    ev.machine_id,
+                    ev.component_id,
+                    claim_str,
+                    summary_str,
+                    src_ref,
+                    coll_ts,
+                    # INSERT bindings
+                    ev.evidence_id,
+                    ev.investigation_id,
+                    ev.evidence_type,
+                    ev.category or ev.evidence_type or "TELEMETRY",
+                    ev.source,
+                    ev.source_type,
+                    ev.source_id,
+                    ev.metric,
+                    obs_str,
+                    ev.unit,
+                    ev.severity,
+                    ev.relationship or "SUPPORTS",
+                    ev.machine_id,
+                    ev.component_id,
+                    claim_str,
+                    summary_str,
+                    src_ref,
+                    coll_ts,
+                ),
+            )
+
+    def _merge_hypothesis_records(self, cur: Any, hypotheses: List[Hypothesis]) -> None:
+        for hyp in hypotheses:
+            fmode = hyp.failure_mode.value if hasattr(hyp.failure_mode, "value") else str(hyp.failure_mode or "BEARING_DEGRADATION")
+            supp_json = json.dumps(hyp.supporting_evidence_ids) if hyp.supporting_evidence_ids else None
+            contra_json = json.dumps(hyp.contradicting_evidence_ids) if hyp.contradicting_evidence_ids else None
+            cur.execute(
+                """
+                MERGE INTO COCO_FACTORY.APP.INVESTIGATION_HYPOTHESIS target
+                USING (SELECT %s AS hypothesis_id) src
+                ON target.hypothesis_id = src.hypothesis_id
+                WHEN MATCHED THEN UPDATE SET
+                    investigation_id = %s,
+                    hypothesis_name = %s,
+                    statement = %s,
+                    failure_mode = %s,
+                    confidence = %s,
+                    status = %s,
+                    rationale = %s,
+                    supporting_evidence_ids = TRY_PARSE_JSON(%s),
+                    contradicting_evidence_ids = TRY_PARSE_JSON(%s)
+                WHEN NOT MATCHED THEN INSERT (
+                    hypothesis_id, investigation_id, hypothesis_name, statement,
+                    failure_mode, confidence, status, rationale,
+                    supporting_evidence_ids, contradicting_evidence_ids
+                ) VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    TRY_PARSE_JSON(%s), TRY_PARSE_JSON(%s)
+                )
+                """,
+                (
+                    hyp.hypothesis_id,
+                    hyp.investigation_id,
+                    hyp.hypothesis_name[:256] if hyp.hypothesis_name else "Hypothesis",
+                    hyp.statement[:2048] if hyp.statement else None,
+                    fmode,
+                    hyp.confidence,
+                    str(hyp.status or "EVALUATED"),
+                    hyp.rationale[:2048] if hyp.rationale else None,
+                    supp_json,
+                    contra_json,
+                    # INSERT bindings
+                    hyp.hypothesis_id,
+                    hyp.investigation_id,
+                    hyp.hypothesis_name[:256] if hyp.hypothesis_name else "Hypothesis",
+                    hyp.statement[:2048] if hyp.statement else None,
+                    fmode,
+                    hyp.confidence,
+                    str(hyp.status or "EVALUATED"),
+                    hyp.rationale[:2048] if hyp.rationale else None,
+                    supp_json,
+                    contra_json,
+                ),
+            )
+
+    def _merge_finding_records(self, cur: Any, findings: List[Finding]) -> None:
+        for f in findings:
+            fmode = f.failure_mode.value if hasattr(f.failure_mode, "value") else str(f.failure_mode or "BEARING_DEGRADATION")
+            ev_refs_list = f.evidence_refs or f.supporting_evidence_ids
+            ev_refs_json = json.dumps(ev_refs_list) if ev_refs_list else None
+            obs_json = json.dumps(f.observed_facts) if f.observed_facts else None
+            inf_json = json.dumps(f.inferences) if f.inferences else None
+            cur.execute(
+                """
+                MERGE INTO COCO_FACTORY.APP.INVESTIGATION_FINDING target
+                USING (SELECT %s AS finding_id) src
+                ON target.finding_id = src.finding_id
+                WHEN MATCHED THEN UPDATE SET
+                    investigation_id = %s,
+                    summary = %s,
+                    statement = %s,
+                    failure_mode = %s,
+                    confidence = %s,
+                    evidence_refs = TRY_PARSE_JSON(%s),
+                    observed_facts = TRY_PARSE_JSON(%s),
+                    inferences = TRY_PARSE_JSON(%s)
+                WHEN NOT MATCHED THEN INSERT (
+                    finding_id, investigation_id, summary, statement,
+                    failure_mode, confidence, evidence_refs, observed_facts, inferences
+                ) VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, TRY_PARSE_JSON(%s), TRY_PARSE_JSON(%s), TRY_PARSE_JSON(%s)
+                )
+                """,
+                (
+                    f.finding_id,
+                    f.investigation_id,
+                    f.summary[:2048] if f.summary else "Finding summary",
+                    f.statement[:2048] if f.statement else None,
+                    fmode,
+                    f.confidence,
+                    ev_refs_json,
+                    obs_json,
+                    inf_json,
+                    # INSERT bindings
+                    f.finding_id,
+                    f.investigation_id,
+                    f.summary[:2048] if f.summary else "Finding summary",
+                    f.statement[:2048] if f.statement else None,
+                    fmode,
+                    f.confidence,
+                    ev_refs_json,
+                    obs_json,
+                    inf_json,
+                ),
+            )
+
+    def _merge_recommendation_records(self, cur: Any, recommendations: List[Recommendation]) -> None:
+        for r in recommendations:
+            prio = r.priority.value if hasattr(r.priority, "value") else str(r.priority or "HIGH")
+            ev_refs_list = r.evidence_refs or r.evidence_ids
+            ev_refs_json = json.dumps(ev_refs_list) if ev_refs_list else None
+            parts_json = json.dumps(r.suggested_parts) if r.suggested_parts else None
+            check_json = json.dumps(r.suggested_checklist) if r.suggested_checklist else None
+            cur.execute(
+                """
+                MERGE INTO COCO_FACTORY.APP.INVESTIGATION_RECOMMENDATION target
+                USING (SELECT %s AS recommendation_id) src
+                ON target.recommendation_id = src.recommendation_id
+                WHEN MATCHED THEN UPDATE SET
+                    investigation_id = %s,
+                    title = %s,
+                    statement = %s,
+                    action_type = %s,
+                    priority = %s,
+                    rationale = %s,
+                    suggested_next_step = %s,
+                    action_required = %s,
+                    status = %s,
+                    estimated_downtime_hours = %s,
+                    suggested_parts = TRY_PARSE_JSON(%s),
+                    suggested_checklist = TRY_PARSE_JSON(%s),
+                    evidence_refs = TRY_PARSE_JSON(%s)
+                WHEN NOT MATCHED THEN INSERT (
+                    recommendation_id, investigation_id, title, statement, action_type,
+                    priority, rationale, suggested_next_step, action_required, status,
+                    estimated_downtime_hours, suggested_parts, suggested_checklist, evidence_refs
+                ) VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, TRY_PARSE_JSON(%s), TRY_PARSE_JSON(%s), TRY_PARSE_JSON(%s)
+                )
+                """,
+                (
+                    r.recommendation_id,
+                    r.investigation_id,
+                    r.title[:256] if r.title else "Recommendation",
+                    r.statement[:2048] if r.statement else None,
+                    str(r.action_type or "INSPECT_BEARING_ASSEMBLY")[:64],
+                    prio,
+                    r.rationale[:2048] if r.rationale else None,
+                    r.suggested_next_step[:1024] if r.suggested_next_step else None,
+                    bool(r.action_required),
+                    str(r.status or "ADVISORY")[:32],
+                    float(r.estimated_downtime_hours or 0.0),
+                    parts_json,
+                    check_json,
+                    ev_refs_json,
+                    # INSERT bindings
+                    r.recommendation_id,
+                    r.investigation_id,
+                    r.title[:256] if r.title else "Recommendation",
+                    r.statement[:2048] if r.statement else None,
+                    str(r.action_type or "INSPECT_BEARING_ASSEMBLY")[:64],
+                    prio,
+                    r.rationale[:2048] if r.rationale else None,
+                    r.suggested_next_step[:1024] if r.suggested_next_step else None,
+                    bool(r.action_required),
+                    str(r.status or "ADVISORY")[:32],
+                    float(r.estimated_downtime_hours or 0.0),
+                    parts_json,
+                    check_json,
+                    ev_refs_json,
+                ),
+            )
+
+    def _merge_tool_call_records(self, cur: Any, tool_calls: List[ToolCall], investigation_id: Optional[str] = None) -> None:
+        for tc in tool_calls:
+            inv_id = investigation_id or tc.execution_id or "ADHOC"
+            params_str = json.dumps(tc.arguments)[:4096] if tc.arguments else None
+            err_str = tc.error_message[:2048] if tc.error_message else None
+            call_ts = tc.started_at.isoformat() if hasattr(tc.started_at, "isoformat") else str(tc.started_at) if tc.started_at else None
+            rec_count = 0
+            if tc.result and isinstance(tc.result, dict):
+                if "record_count" in tc.result:
+                    rec_count = int(tc.result["record_count"])
+                elif "data" in tc.result and isinstance(tc.result["data"], list):
+                    rec_count = len(tc.result["data"])
+            elif tc.result and isinstance(tc.result, (list, tuple)):
+                rec_count = len(tc.result)
+            cur.execute(
+                """
+                MERGE INTO COCO_FACTORY.APP.INVESTIGATION_TOOL_CALL target
+                USING (SELECT %s AS call_id) src
+                ON target.call_id = src.call_id
+                WHEN MATCHED THEN UPDATE SET
+                    investigation_id = %s,
+                    tool_name = %s,
+                    tool_mode = 'READ',
+                    scope = %s,
+                    parameters = %s,
+                    record_count = %s,
+                    duration_ms = %s,
+                    success = %s,
+                    error_message = %s,
+                    called_at = %s
+                WHEN NOT MATCHED THEN INSERT (
+                    call_id, investigation_id, tool_name, tool_mode, scope,
+                    parameters, record_count, duration_ms, success, error_message, called_at
+                ) VALUES (
+                    %s, %s, %s, 'READ', %s,
+                    %s, %s, %s, %s, %s, %s
+                )
+                """,
+                (
+                    tc.tool_call_id,
+                    inv_id,
+                    tc.tool_name[:64],
+                    "investigation:read",
+                    params_str,
+                    rec_count,
+                    float(tc.duration_ms or 0.0),
+                    bool(tc.is_success),
+                    err_str,
+                    call_ts,
+                    # INSERT bindings
+                    tc.tool_call_id,
+                    inv_id,
+                    tc.tool_name[:64],
+                    "investigation:read",
+                    params_str,
+                    rec_count,
+                    float(tc.duration_ms or 0.0),
+                    bool(tc.is_success),
+                    err_str,
+                    call_ts,
+                ),
+            )
+
     def create_investigation(self, investigation: Investigation) -> Investigation:
         conn = self.conn_mgr.get_connection()
         cur = conn.cursor()
         try:
-            ts_str = investigation.created_at.isoformat() if hasattr(investigation.created_at, "isoformat") else str(investigation.created_at)
-            cur.execute(
-                "INSERT INTO COCO_FACTORY.APP.INVESTIGATION "
-                "(investigation_id, trigger_type, alert_id, machine_id, status, failure_mode, confidence, created_at) "
-                "VALUES (%s, 'ALERT', %s, %s, %s, %s, %s, %s)",
-                (
-                    investigation.investigation_id,
-                    investigation.alert_id,
-                    investigation.machine_id,
-                    investigation.status.value,
-                    investigation.failure_mode.value,
-                    investigation.confidence,
-                    ts_str,
-                ),
-            )
+            self._merge_investigation_record(cur, investigation)
+            if investigation.evidence:
+                self._merge_evidence_records(cur, investigation.evidence)
+            if investigation.hypotheses:
+                self._merge_hypothesis_records(cur, investigation.hypotheses)
+            if investigation.findings:
+                self._merge_finding_records(cur, investigation.findings)
+            elif investigation.finding:
+                self._merge_finding_records(cur, [investigation.finding])
+            if investigation.recommendations:
+                self._merge_recommendation_records(cur, investigation.recommendations)
+            elif investigation.recommendation:
+                self._merge_recommendation_records(cur, [investigation.recommendation])
             conn.commit()
             return investigation
         finally:
@@ -1405,24 +1807,67 @@ class SnowflakeRepository(
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT investigation_id, alert_id, machine_id, status, failure_mode, confidence, created_at, completed_at "
-                "FROM COCO_FACTORY.APP.INVESTIGATION WHERE investigation_id = %s",
+                """
+                SELECT investigation_id, trigger_type, trigger_id, prediction_id, alert_id,
+                       machine_id, component_id, scope, status, failure_mode, confidence,
+                       summary, limitations, provenance, started_at, completed_at, created_at
+                FROM COCO_FACTORY.APP.INVESTIGATION
+                WHERE investigation_id = %s
+                """,
                 (investigation_id,),
             )
             r = cur.fetchone()
             if not r:
                 return None
-            from domain.enums import InvestigationStatus
-            return Investigation(
+
+            from domain.enums import InvestigationStatus, TriggerType, FailureMode
+
+            limitations = []
+            if r[12]:
+                if isinstance(r[12], list):
+                    limitations = r[12]
+                elif isinstance(r[12], str):
+                    try:
+                        parsed = json.loads(r[12])
+                        limitations = parsed if isinstance(parsed, list) else [parsed]
+                    except Exception:
+                        limitations = [r[12]]
+
+            provenance = {}
+            if r[13]:
+                if isinstance(r[13], dict):
+                    provenance = r[13]
+                elif isinstance(r[13], str):
+                    try:
+                        parsed = json.loads(r[13])
+                        provenance = parsed if isinstance(parsed, dict) else {"raw": parsed}
+                    except Exception:
+                        provenance = {"raw": r[13]}
+
+            trig_type = TriggerType(r[1]) if r[1] in TriggerType._value2member_map_ else TriggerType.PREDICTION
+            status_val = InvestigationStatus(r[8]) if r[8] in InvestigationStatus._value2member_map_ else InvestigationStatus.COMPLETED
+            fmode_val = FailureMode(r[9]) if r[9] in FailureMode._value2member_map_ else FailureMode.BEARING_DEGRADATION
+
+            inv = Investigation(
                 investigation_id=r[0],
-                alert_id=r[1] or "",
-                machine_id=r[2],
-                status=InvestigationStatus(r[3]) if r[3] in InvestigationStatus._value2member_map_ else InvestigationStatus.IN_PROGRESS,
-                failure_mode=FailureMode(r[4]) if r[4] in FailureMode._value2member_map_ else FailureMode.BEARING_DEGRADATION,
-                confidence=float(r[5] or 0.9),
-                created_at=r[6],
-                completed_at=r[7],
+                trigger_type=trig_type,
+                trigger_id=r[2],
+                prediction_id=r[3],
+                alert_id=r[4],
+                machine_id=r[5],
+                component_id=r[6],
+                scope=r[7],
+                status=status_val,
+                failure_mode=fmode_val,
+                confidence=float(r[10]) if r[10] is not None else 0.88,
+                summary=r[11],
+                limitations=limitations,
+                provenance=provenance,
+                started_at=r[14],
+                completed_at=r[15],
+                created_at=r[16],
             )
+            return inv
         finally:
             cur.close()
             conn.close()
@@ -1433,27 +1878,7 @@ class SnowflakeRepository(
         conn = self.conn_mgr.get_connection()
         cur = conn.cursor()
         try:
-            params = [
-                (
-                    ev.evidence_id,
-                    ev.investigation_id,
-                    ev.evidence_type,
-                    "TELEMETRY",
-                    ev.source,
-                    ev.metric,
-                    str(ev.observed_value),
-                    ev.relationship,
-                    ev.summary,
-                    ev.timestamp.isoformat() if hasattr(ev.timestamp, "isoformat") else str(ev.timestamp),
-                )
-                for ev in evidence
-            ]
-            cur.executemany(
-                "INSERT INTO COCO_FACTORY.APP.INVESTIGATION_EVIDENCE "
-                "(evidence_id, investigation_id, evidence_type, category, source, metric, observed_value, relationship, summary, collected_at) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-                params,
-            )
+            self._merge_evidence_records(cur, evidence)
             conn.commit()
         finally:
             cur.close()
@@ -1464,9 +1889,14 @@ class SnowflakeRepository(
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT evidence_id, investigation_id, evidence_type, source, metric, "
-                "observed_value, '' AS baseline_value, relationship, summary, collected_at "
-                "FROM COCO_FACTORY.APP.INVESTIGATION_EVIDENCE WHERE investigation_id = %s ORDER BY collected_at",
+                """
+                SELECT evidence_id, investigation_id, evidence_type, category, source,
+                       source_type, source_id, metric, observed_value, unit, severity,
+                       relationship, machine_id, component_id, claim, summary, source_reference, collected_at
+                FROM COCO_FACTORY.APP.INVESTIGATION_EVIDENCE
+                WHERE investigation_id = %s
+                ORDER BY collected_at
+                """,
                 (investigation_id,),
             )
             rows = cur.fetchall()
@@ -1474,17 +1904,275 @@ class SnowflakeRepository(
                 Evidence(
                     evidence_id=r[0],
                     investigation_id=r[1],
-                    evidence_type=r[2],
-                    source=r[3],
-                    metric=r[4],
-                    observed_value=r[5],
-                    baseline_value=r[6] or None,
-                    relationship=r[7],
-                    summary=r[8],
-                    timestamp=r[9],
+                    evidence_type=r[2] or "TELEMETRY",
+                    category=r[3],
+                    source=r[4] or "",
+                    source_type=r[5],
+                    source_id=r[6],
+                    metric=r[7] or "",
+                    observed_value=r[8],
+                    unit=r[9],
+                    severity=r[10],
+                    relationship=r[11] or "SUPPORTS",
+                    machine_id=r[12],
+                    component_id=r[13],
+                    claim=r[14],
+                    summary=r[15] or "",
+                    source_reference=r[16],
+                    timestamp=r[17],
                 )
                 for r in rows
             ]
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_hypotheses(self, hypotheses: List[Hypothesis]) -> None:
+        if not hypotheses:
+            return
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            self._merge_hypothesis_records(cur, hypotheses)
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_hypotheses(self, investigation_id: str) -> List[Hypothesis]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT hypothesis_id, investigation_id, hypothesis_name, statement,
+                       failure_mode, confidence, status, rationale,
+                       supporting_evidence_ids, contradicting_evidence_ids, created_at
+                FROM COCO_FACTORY.APP.INVESTIGATION_HYPOTHESIS
+                WHERE investigation_id = %s
+                ORDER BY created_at
+                """,
+                (investigation_id,),
+            )
+            rows = cur.fetchall()
+            from domain.enums import FailureMode
+            items = []
+            for r in rows:
+                supp = r[8] if isinstance(r[8], list) else (json.loads(r[8]) if isinstance(r[8], str) else [])
+                contra = r[9] if isinstance(r[9], list) else (json.loads(r[9]) if isinstance(r[9], str) else [])
+                fmode = FailureMode(r[4]) if r[4] in FailureMode._value2member_map_ else FailureMode.BEARING_DEGRADATION
+                items.append(
+                    Hypothesis(
+                        hypothesis_id=r[0],
+                        investigation_id=r[1],
+                        hypothesis_name=r[2],
+                        statement=r[3],
+                        failure_mode=fmode,
+                        confidence=float(r[5]) if r[5] is not None else 0.8,
+                        status=r[6] or "EVALUATED",
+                        rationale=r[7] or "",
+                        supporting_evidence_ids=supp,
+                        contradicting_evidence_ids=contra,
+                    )
+                )
+            return items
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_findings(self, findings: List[Finding]) -> None:
+        if not findings:
+            return
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            self._merge_finding_records(cur, findings)
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_findings(self, investigation_id: str) -> List[Finding]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT finding_id, investigation_id, summary, statement,
+                       failure_mode, confidence, evidence_refs, observed_facts, inferences, created_at
+                FROM COCO_FACTORY.APP.INVESTIGATION_FINDING
+                WHERE investigation_id = %s
+                ORDER BY created_at
+                """,
+                (investigation_id,),
+            )
+            rows = cur.fetchall()
+            from domain.enums import FailureMode
+            items = []
+            for r in rows:
+                ev_refs = r[6] if isinstance(r[6], list) else (json.loads(r[6]) if isinstance(r[6], str) else [])
+                obs = r[7] if isinstance(r[7], list) else (json.loads(r[7]) if isinstance(r[7], str) else [])
+                inf = r[8] if isinstance(r[8], list) else (json.loads(r[8]) if isinstance(r[8], str) else [])
+                fmode = FailureMode(r[4]) if r[4] in FailureMode._value2member_map_ else FailureMode.BEARING_DEGRADATION
+                items.append(
+                    Finding(
+                        finding_id=r[0],
+                        investigation_id=r[1],
+                        summary=r[2],
+                        statement=r[3],
+                        failure_mode=fmode,
+                        confidence=float(r[5]) if r[5] is not None else 0.85,
+                        evidence_refs=ev_refs,
+                        observed_facts=obs,
+                        inferences=inf,
+                        created_at=r[9],
+                    )
+                )
+            return items
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_recommendations(self, recommendations: List[Recommendation]) -> None:
+        if not recommendations:
+            return
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            self._merge_recommendation_records(cur, recommendations)
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_recommendations(self, investigation_id: str) -> List[Recommendation]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT recommendation_id, investigation_id, title, statement, action_type,
+                       priority, rationale, suggested_next_step, action_required, status,
+                       estimated_downtime_hours, suggested_parts, suggested_checklist, evidence_refs, created_at
+                FROM COCO_FACTORY.APP.INVESTIGATION_RECOMMENDATION
+                WHERE investigation_id = %s
+                ORDER BY created_at
+                """,
+                (investigation_id,),
+            )
+            rows = cur.fetchall()
+            from domain.enums import Priority
+            items = []
+            for r in rows:
+                prio = Priority(r[5]) if r[5] in Priority._value2member_map_ else Priority.HIGH
+                parts = r[11] if isinstance(r[11], list) else (json.loads(r[11]) if isinstance(r[11], str) else [])
+                checklist = r[12] if isinstance(r[12], list) else (json.loads(r[12]) if isinstance(r[12], str) else [])
+                ev_refs = r[13] if isinstance(r[13], list) else (json.loads(r[13]) if isinstance(r[13], str) else [])
+                items.append(
+                    Recommendation(
+                        recommendation_id=r[0],
+                        investigation_id=r[1],
+                        title=r[2],
+                        statement=r[3],
+                        action_type=r[4] or "INSPECT_BEARING_ASSEMBLY",
+                        priority=prio,
+                        rationale=r[6] or "",
+                        suggested_next_step=r[7],
+                        action_required=bool(r[8]),
+                        status=r[9] or "ADVISORY",
+                        estimated_downtime_hours=float(r[10]) if r[10] is not None else 0.0,
+                        suggested_parts=parts,
+                        suggested_checklist=checklist,
+                        evidence_refs=ev_refs,
+                    )
+                )
+            return items
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_tool_calls(self, tool_calls: List[ToolCall], investigation_id: Optional[str] = None) -> None:
+        if not tool_calls:
+            return
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            self._merge_tool_call_records(cur, tool_calls, investigation_id=investigation_id)
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_tool_calls(self, investigation_id: str) -> List[ToolCall]:
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT call_id, investigation_id, tool_name, tool_mode, scope,
+                       parameters, record_count, duration_ms, success, error_message, called_at
+                FROM COCO_FACTORY.APP.INVESTIGATION_TOOL_CALL
+                WHERE investigation_id = %s
+                ORDER BY called_at
+                """,
+                (investigation_id,),
+            )
+            rows = cur.fetchall()
+            items = []
+            for r in rows:
+                args = json.loads(r[5]) if r[5] and isinstance(r[5], str) else (r[5] if isinstance(r[5], dict) else {})
+                items.append(
+                    ToolCall(
+                        tool_call_id=r[0],
+                        execution_id=r[1],
+                        tool_name=r[2],
+                        arguments=args,
+                        duration_ms=float(r[7]) if r[7] is not None else 0.0,
+                        is_success=bool(r[8]),
+                        error_message=r[9],
+                        started_at=r[10],
+                    )
+                )
+            return items
+        finally:
+            cur.close()
+            conn.close()
+
+    def save_investigation_bundle(
+        self,
+        investigation: Investigation,
+        evidence: Optional[List[Evidence]] = None,
+        hypotheses: Optional[List[Hypothesis]] = None,
+        findings: Optional[List[Finding]] = None,
+        recommendations: Optional[List[Recommendation]] = None,
+        tool_calls: Optional[List[ToolCall]] = None,
+    ) -> Investigation:
+        """Atomically persist a complete investigation and its child records inside a single Snowflake transaction."""
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("BEGIN")
+            self._merge_investigation_record(cur, investigation)
+            if evidence:
+                self._merge_evidence_records(cur, evidence)
+            if hypotheses:
+                self._merge_hypothesis_records(cur, hypotheses)
+            if findings:
+                self._merge_finding_records(cur, findings)
+            if recommendations:
+                self._merge_recommendation_records(cur, recommendations)
+            if tool_calls:
+                self._merge_tool_call_records(cur, tool_calls, investigation_id=investigation.investigation_id)
+            cur.execute("COMMIT")
+            conn.commit()
+            return investigation
+        except Exception:
+            try:
+                cur.execute("ROLLBACK")
+                conn.rollback()
+            except Exception:
+                pass
+            raise
         finally:
             cur.close()
             conn.close()
@@ -1494,12 +2182,14 @@ class SnowflakeRepository(
         cur = conn.cursor()
         try:
             comp_str = investigation.completed_at.isoformat() if investigation.completed_at and hasattr(investigation.completed_at, "isoformat") else str(investigation.completed_at) if investigation.completed_at else None
+            status_val = investigation.status.value if hasattr(investigation.status, "value") else str(investigation.status)
             cur.execute(
                 "UPDATE COCO_FACTORY.APP.INVESTIGATION "
-                "SET status = %s, confidence = %s, completed_at = %s WHERE investigation_id = %s",
+                "SET status = %s, confidence = %s, summary = %s, completed_at = %s WHERE investigation_id = %s",
                 (
-                    investigation.status.value,
+                    status_val,
                     investigation.confidence,
+                    investigation.summary,
                     comp_str,
                     investigation.investigation_id,
                 ),

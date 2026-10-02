@@ -23,14 +23,18 @@ from domain.models import (
     Failure,
     FailureRisk,
     FeatureVector,
+    Finding,
     HealthAssessment,
+    Hypothesis,
     Investigation,
     Machine,
     MaintenanceEvent,
     Plant,
     ProductionLine,
+    Recommendation,
     Sensor,
     TelemetryMeasurement,
+    ToolCall,
     Verification,
     VerificationResult,
     VerificationPolicy,
@@ -215,6 +219,32 @@ class InvestigationRepository(ABC):
 
     @abstractmethod
     def get_evidence(self, investigation_id: str) -> List[Evidence]: ...
+
+    @abstractmethod
+    def save_hypotheses(self, hypotheses: List[Hypothesis]) -> None: ...
+
+    @abstractmethod
+    def get_hypotheses(self, investigation_id: str) -> List[Hypothesis]: ...
+
+    @abstractmethod
+    def save_findings(self, findings: List[Finding]) -> None: ...
+
+    @abstractmethod
+    def get_findings(self, investigation_id: str) -> List[Finding]: ...
+
+    @abstractmethod
+    def save_recommendations(self, recommendations: List[Recommendation]) -> None: ...
+
+    @abstractmethod
+    def get_recommendations(self, investigation_id: str) -> List[Recommendation]: ...
+
+    @abstractmethod
+    def save_tool_calls(
+        self, tool_calls: List[ToolCall], investigation_id: Optional[str] = None
+    ) -> None: ...
+
+    @abstractmethod
+    def get_tool_calls(self, investigation_id: str) -> List[ToolCall]: ...
 
     @abstractmethod
     def update_investigation(self, investigation: Investigation) -> Investigation: ...

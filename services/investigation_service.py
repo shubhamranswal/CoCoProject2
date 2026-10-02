@@ -433,13 +433,40 @@ class InvestigationService:
         )
 
         # Save to repository
-        save_inv_fn = getattr(self.repo, "create_investigation", None)
-        if callable(save_inv_fn):
-            save_inv_fn(inv_record)
+        save_bundle_fn = getattr(self.repo, "save_investigation_bundle", None)
+        if callable(save_bundle_fn):
+            save_bundle_fn(
+                investigation=inv_record,
+                evidence=collected_evidence,
+                hypotheses=raw_result.hypotheses,
+                findings=raw_result.findings,
+                recommendations=raw_result.recommendations,
+                tool_calls=tool_history,
+            )
+        else:
+            save_inv_fn = getattr(self.repo, "create_investigation", None)
+            if callable(save_inv_fn):
+                save_inv_fn(inv_record)
 
-        save_ev_fn = getattr(self.repo, "save_evidence", None)
-        if callable(save_ev_fn) and collected_evidence:
-            save_ev_fn(collected_evidence)
+            save_ev_fn = getattr(self.repo, "save_evidence", None)
+            if callable(save_ev_fn) and collected_evidence:
+                save_ev_fn(collected_evidence)
+
+            save_hyp_fn = getattr(self.repo, "save_hypotheses", None)
+            if callable(save_hyp_fn) and raw_result.hypotheses:
+                save_hyp_fn(raw_result.hypotheses)
+
+            save_find_fn = getattr(self.repo, "save_findings", None)
+            if callable(save_find_fn) and raw_result.findings:
+                save_find_fn(raw_result.findings)
+
+            save_rec_fn = getattr(self.repo, "save_recommendations", None)
+            if callable(save_rec_fn) and raw_result.recommendations:
+                save_rec_fn(raw_result.recommendations)
+
+            save_tc_fn = getattr(self.repo, "save_tool_calls", None)
+            if callable(save_tc_fn) and tool_history:
+                save_tc_fn(tool_history, investigation_id=inv_id)
 
         logger.info(
             "Investigation '%s' completed successfully: %d evidence items, %d findings, %d recommendations",
