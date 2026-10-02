@@ -22,6 +22,9 @@ class SnowflakeConfig:
     account: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_ACCOUNT", ""))
     user: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_USER", ""))
     password: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_PASSWORD", ""))
+    private_key_path: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH", ""))
+    private_key_passphrase: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", ""))
+    authenticator: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_AUTHENTICATOR", "snowflake"))
     warehouse: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"))
     database: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_DATABASE", "COCO_FACTORY"))
     schema: str = field(default_factory=lambda: os.getenv("SNOWFLAKE_SCHEMA", "CORE"))
@@ -33,7 +36,16 @@ class SnowflakeConfig:
     @property
     def is_configured(self) -> bool:
         """Returns True only if essential credentials are populated."""
-        return bool(self.account and self.user and self.password)
+        return bool(self.account and self.user and (self.password or self.private_key_path))
+
+    @property
+    def auth_method(self) -> str:
+        """Identifies configured authentication method."""
+        if self.private_key_path:
+            return "key_pair"
+        if self.password:
+            return "password"
+        return "unconfigured"
 
 
 @dataclass(frozen=True)
