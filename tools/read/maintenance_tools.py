@@ -60,17 +60,28 @@ class GetMaintenanceHistoryTool(BaseReadTool):
             parts_c = getattr(w, "parts_cost", 0.0) or 0.0
             total_c = getattr(w, "total_cost", 0.0) or (parts_c + labor_hrs * 500.0)
 
+            # Support canonical WorkOrder (failure_mode, assigned_to) and legacy (type, assigned_technician_id)
+            if hasattr(w, "failure_mode") and w.failure_mode:
+                work_type = w.failure_mode.value if hasattr(w.failure_mode, "value") else str(w.failure_mode)
+            elif hasattr(w, "type") and w.type:
+                work_type = w.type.value if hasattr(w.type, "value") else str(w.type)
+            else:
+                work_type = "CORRECTIVE"
+
+            technician = getattr(w, "assigned_to", None) or getattr(w, "assigned_technician_id", None)
+            status_val = w.status.value if hasattr(w.status, "value") else str(w.status)
+
             items.append(
                 WorkOrderSummaryItem(
                     work_order_id=w.work_order_id,
                     machine_id=w.machine_id,
                     component_id=w.component_id,
-                    work_type=w.type.value if hasattr(w.type, "value") else str(w.type),
+                    work_type=work_type,
                     failure_code=getattr(w, "failure_code", None),
-                    status=w.status.value if hasattr(w.status, "value") else str(w.status),
+                    status=status_val,
                     opened_ts=w.created_at,
                     closed_ts=w.completed_at,
-                    technician=w.assigned_technician_id,
+                    technician=technician,
                     labor_hours=labor_hrs,
                     parts_cost=parts_c,
                     total_cost=total_c,
@@ -149,9 +160,10 @@ class GetHistoricalFailuresTool(BaseReadTool):
             if code_filter and code_filter not in fcode.upper():
                 continue
             codes_count[fcode] = codes_count.get(fcode, 0) + 1
-            if f.timestamp:
-                if last_dt is None or f.timestamp > last_dt:
-                    last_dt = f.timestamp
+            f_ts = getattr(f, "occurred_at", None) or getattr(f, "timestamp", None)
+            if f_ts:
+                if last_dt is None or f_ts > last_dt:
+                    last_dt = f_ts
 
         count = len(matched_wos) + len(failures)
         recurrence = None

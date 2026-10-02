@@ -45,6 +45,16 @@ class GetDowntimeHistoryTool(BaseReadTool):
                 summary = matched[0]
 
         if summary:
+            ev_count = getattr(summary, "total_event_count", None)
+            if ev_count is None:
+                ev_count = getattr(summary, "event_count", 0)
+
+            top_rc = getattr(summary, "top_reason_code", None)
+            if top_rc:
+                top_codes = [top_rc]
+            else:
+                top_codes = getattr(summary, "top_reason_codes", None) or ["E-BRG-DEG", "E-MTR-OVH"]
+
             return DowntimeHistoryOutput(
                 machine_id=params.machine_id,
                 total_downtime_minutes=summary.total_downtime_minutes,
@@ -54,8 +64,8 @@ class GetDowntimeHistoryTool(BaseReadTool):
                 no_material_minutes=summary.no_material_minutes,
                 no_operator_minutes=summary.no_operator_minutes,
                 planned_maintenance_minutes=summary.planned_maintenance_minutes,
-                event_count=summary.event_count,
-                top_reason_codes=summary.top_reason_codes or ["E-BRG-DEG", "E-MTR-OVH"],
+                event_count=ev_count,
+                top_reason_codes=top_codes,
             )
 
         return DowntimeHistoryOutput(

@@ -89,17 +89,29 @@ class GetMachineHealthTool(BaseReadTool):
         # Check analytics repository
         mhd = self.repo.get_machine_health_daily(params.machine_id, metric_date=params.metric_date)
         if mhd:
+            # Deterministically derive health_score from latest_failure_prob or health_status
+            if mhd.latest_failure_prob is not None:
+                derived_score = round(max(0.0, min(100.0, (1.0 - mhd.latest_failure_prob) * 100.0)), 1)
+            elif mhd.health_status == "CRITICAL":
+                derived_score = 15.0
+            elif mhd.health_status in ("WARNING", "DEGRADING"):
+                derived_score = 60.0
+            else:
+                derived_score = 100.0
+
+            dt_hours = round(mhd.downtime_minutes / 60.0, 2) if mhd.downtime_minutes else 0.0
+
             return MachineHealthOutput(
                 machine_id=params.machine_id,
                 machine_name=mach_name,
                 health_status=mhd.health_status,
-                health_score=mhd.health_score,
-                state=mhd.state,
-                active_anomalies_count=mhd.active_anomalies_count,
-                open_alerts_count=mhd.open_alerts_count,
-                latest_prediction_prob=mhd.latest_prediction_prob,
-                risk_level=mhd.risk_level,
-                downtime_hours_7d=mhd.downtime_hours_7d,
+                health_score=derived_score,
+                state=state_str,
+                active_anomalies_count=mhd.exceedance_count,
+                open_alerts_count=mhd.open_alerts,
+                latest_prediction_prob=mhd.latest_failure_prob,
+                risk_level=mhd.latest_risk_level or ("CRITICAL" if mhd.health_status == "CRITICAL" else "LOW"),
+                downtime_hours_7d=dt_hours,
             )
 
         # Fallback to direct repository lookups
@@ -127,6 +139,9 @@ class GetMachineHealthTool(BaseReadTool):
             health_sc = 50.0
             health_st = "DEGRADING"
 
+        dt_summary = getattr(self.repo, "get_downtime_daily", lambda m: None)(params.machine_id)
+        dt_hours = round(getattr(dt_summary, "total_downtime_minutes", 0.0) / 60.0, 2) if dt_summary else 0.0
+
         return MachineHealthOutput(
             machine_id=params.machine_id,
             machine_name=mach_name,
@@ -137,5 +152,5 @@ class GetMachineHealthTool(BaseReadTool):
             open_alerts_count=len(open_alerts),
             latest_prediction_prob=pred_prob,
             risk_level=risk_lvl,
-            downtime_hours_7d=2.5,
+            downtime_hours_7d=dt_hours,
         )

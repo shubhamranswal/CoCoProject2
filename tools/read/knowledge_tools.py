@@ -85,14 +85,15 @@ class SearchKnowledgeTool(BaseReadTool):
         items: List[KnowledgeSearchResultItem] = []
         for d in docs:
             excerpt = d.content[:400] + ("..." if len(d.content) > 400 else "") if hasattr(d, "content") else ""
+            doc_id = getattr(d, "document_id", None) or getattr(d, "doc_id", "DOC-001")
             items.append(
                 KnowledgeSearchResultItem(
-                    document_id=d.doc_id if hasattr(d, "doc_id") else getattr(d, "document_id", "DOC-001"),
+                    document_id=doc_id,
                     title=d.title,
                     document_type=getattr(d, "doc_type", "reference"),
                     content_excerpt=excerpt,
                     relevance=0.92,
-                    source_reference=f"Manual:{getattr(d, 'doc_id', 'DOC')}",
+                    source_reference=f"Manual:{doc_id}",
                 )
             )
 
@@ -127,13 +128,18 @@ class GetKnowledgeDocumentTool(BaseReadTool):
         doc = getattr(self.repo, "get_document", lambda did: None)(params.document_id)
         if not doc:
             return None
+        doc_id = getattr(doc, "document_id", None) or getattr(doc, "doc_id", params.document_id)
+        doc_type = getattr(doc, "doc_type", "reference")
+        m_type = getattr(doc, "machine_type", None) or getattr(doc, "model", None)
+        c_type = getattr(doc, "component_type", None)
+
         return KnowledgeDocumentOutput(
-            document_id=doc.doc_id,
+            document_id=doc_id,
             title=doc.title,
-            document_type=doc.doc_type,
+            document_type=doc_type,
             content=doc.content,
-            machine_type=doc.machine_type,
-            component_type=doc.component_type,
+            machine_type=m_type,
+            component_type=c_type,
         )
 
 
