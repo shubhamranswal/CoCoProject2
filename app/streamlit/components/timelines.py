@@ -15,20 +15,50 @@ from domain.enums import WorkOrderStatus
 from domain.models import Investigation, WorkOrder
 
 
-def render_investigation_timeline(investigation: Optional[Investigation]) -> None:
-    """Render the high-level step-by-step investigation timeline."""
-    steps = [
-        ("Alert Detected", "ALT-M204: Critical vibration & temperature threshold crossed.", True),
-        ("Telemetry Reviewed", "FeatureExtractor calculated Vibration RMS (0.919g) and thermal slope.", True),
-        ("Anomalies Correlated", "Dual-signal anomaly active on drive-end bearing sensors.", True),
-        ("Failure History Queried", "Retrieved 2025-04 bearing inner-race spalling precedent.", True),
-        ("Maintenance History Queried", "Last grease replenishment performed 48 days ago.", True),
-        ("Technical Manual Consulted", "DRV-5000 Manual Section 4.2: Maximum vibration RMS limit is 0.70g.", True),
-        ("Hypotheses Evaluated", "Bearing Degradation (Supported), Thermal Overload (Refuted).", True),
-        ("Finding Generated", "M204 Conveyor Motor undergoing progressive bearing raceway degradation.", True),
-        ("Recommendation Formed", "Perform LOTO and emergency bearing assembly replacement.", True),
-        ("Governance Approval Requested", "Approval request APP-M204 dispatched for human authorization.", bool(investigation and investigation.action_proposal)),
-    ]
+def render_investigation_timeline(
+    investigation: Optional[Investigation],
+    detail: Optional[dict] = None,
+) -> None:
+    """Render the dynamic step-by-step investigation timeline."""
+    if investigation:
+        machine_id = getattr(investigation, "machine_id", "Unknown")
+        machine_name = (detail.get("machine_name") if detail else None) or machine_id
+        trigger_type = getattr(investigation, "trigger_type", None)
+        trigger_str = trigger_type.value if hasattr(trigger_type, "value") else str(trigger_type or "ANOMALY")
+        trigger_ref = (
+            getattr(investigation, "prediction_id", None)
+            or getattr(investigation, "alert_id", None)
+            or getattr(investigation, "trigger_id", None)
+            or f"TRG-{machine_id}"
+        )
+        evidence_count = (
+            len(detail.get("evidence", []))
+            if detail and "evidence" in detail
+            else len(getattr(investigation, "evidence", []) or [])
+        )
+        hypotheses = (detail.get("hypotheses") if detail else None) or getattr(investigation, "hypotheses", []) or []
+        findings = (detail.get("findings") if detail else None) or getattr(investigation, "findings", []) or ([investigation.finding] if getattr(investigation, "finding", None) else [])
+        recommendations = (detail.get("recommendations") if detail else None) or getattr(investigation, "recommendations", []) or ([investigation.recommendation] if getattr(investigation, "recommendation", None) else [])
+        action_proposal = (detail.get("action_proposal") if detail else None) or getattr(investigation, "action_proposal", None)
+        rec_type = recommendations[0].action_type if recommendations else "INSPECTION"
+
+        steps = [
+            ("Trigger Event Detected", f"{trigger_str} identified for asset {machine_id} ({machine_name}). Ref: {trigger_ref}.", True),
+            ("Evidence Base Ingestion", f"Ingested and verified {evidence_count} evidence records across telemetry, failure history, inventory, and technical manuals.", True),
+            ("Hypothesis Evaluation", f"Evaluated {len(hypotheses)} diagnostic hypotheses against verified sensor and operational evidence.", True),
+            ("Root Cause Synthesis", f"Synthesized {len(findings)} findings establishing mechanical failure mechanism and operational impacts.", True),
+            ("Advisory Recommendations", f"Formed {len(recommendations)} advisory recommendations ({rec_type}). Strictly non-executable.", True),
+            ("Governance & Policy Gate", f"Governance Policy: {'Action proposal dispatched for authorization' if action_proposal else 'Advisory state maintained. Human approval required prior to operational proposal.'}", bool(action_proposal)),
+        ]
+    else:
+        steps = [
+            ("Trigger Event Detected", "System anomaly or risk prediction identified for target equipment.", False),
+            ("Evidence Base Ingestion", "Gathering sensor telemetry, maintenance logs, and asset manuals.", False),
+            ("Hypothesis Evaluation", "Formulating and testing failure mode hypotheses.", False),
+            ("Root Cause Synthesis", "Synthesizing evidence-grounded findings.", False),
+            ("Advisory Recommendations", "Drafting advisory maintenance recommendations.", False),
+            ("Governance & Policy Gate", "Evaluating human authorization and governance policy.", False),
+        ]
 
     st.markdown("<div style='font-size: 13px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.04em; margin-bottom: 8px;'>INVESTIGATION PROGRESSION</div>", unsafe_allow_html=True)
 

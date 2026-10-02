@@ -624,16 +624,26 @@ class CommandCenterFacade:
         if not verif and wo:
             verif = self.repo.get_verification(wo.work_order_id)
 
+        machine = getattr(self.repo, "get_machine", lambda mid: None)(inv.machine_id)
+        machine_name = machine.name if machine else inv.machine_id
+        tool_calls = getattr(self.repo, "get_tool_calls", lambda iid: [])(investigation_id)
+
         return {
             "investigation": inv,
             "finding": inv.finding,
+            "findings": inv.findings,
             "recommendation": inv.recommendation,
+            "recommendations": inv.recommendations,
             "action_proposal": inv.action_proposal,
             "evidence": inv.evidence,
             "hypotheses": inv.hypotheses,
             "approval": app,
             "work_order": wo,
             "verification": verif,
+            "provenance": inv.provenance,
+            "tool_calls": tool_calls,
+            "machine": machine,
+            "machine_name": machine_name,
         }
 
     def get_work_orders(
