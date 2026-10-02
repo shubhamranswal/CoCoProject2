@@ -248,6 +248,10 @@ class InMemoryRepository(
             for line in LINES:
                 self._lines[line.line_id] = line
             for machine in MACHINES:
+                if not machine.plant_id:
+                    line_obj = self._lines.get(machine.line_id)
+                    p_id = line_obj.plant_id if line_obj else PLANT_01.plant_id
+                    machine = machine.model_copy(update={"plant_id": p_id})
                 self._machines[machine.machine_id] = machine
                 self._components[machine.machine_id] = []
                 self._sensors[machine.machine_id] = []
@@ -280,6 +284,10 @@ class InMemoryRepository(
             for line in CANONICAL_LINES:
                 self._lines[line.line_id] = line
             for machine in CANONICAL_MACHINES:
+                if not machine.plant_id:
+                    line_obj = self._lines.get(machine.line_id)
+                    p_id = line_obj.plant_id if line_obj else CANONICAL_PLANT.plant_id
+                    machine = machine.model_copy(update={"plant_id": p_id})
                 self._machines[machine.machine_id] = machine
                 if machine.machine_id not in self._components:
                     self._components[machine.machine_id] = []

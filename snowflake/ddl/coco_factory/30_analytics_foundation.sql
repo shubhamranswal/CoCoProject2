@@ -47,7 +47,7 @@ alerts_daily AS (
         machine_id,
         DATE(ts) AS metric_date,
         COUNT(*) AS open_alerts,
-        COUNT(CASE WHEN severity = 'CRITICAL' THEN 1 END) AS critical_alert_count
+        COUNT(CASE WHEN UPPER(severity) = 'CRITICAL' THEN 1 END) AS critical_alert_count
     FROM COCO_FACTORY.CORE.ALERT
     GROUP BY machine_id, DATE(ts)
 ),

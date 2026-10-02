@@ -18,20 +18,24 @@ from unittest.mock import MagicMock
 import pytest
 
 from domain.enums import (
+    AlertStatus,
     ApprovalStatus,
     FailureMode,
     HealthStatus,
     InvestigationStatus,
     MachineState,
     Priority,
+    Severity,
     VerificationStatus,
     WorkOrderStatus,
 )
 from domain.models import (
     ActionExecution,
+    Alert,
     Approval,
     AuditEvent,
     Investigation,
+    Machine,
     Verification,
     WorkOrder,
 )
@@ -153,28 +157,32 @@ def test_referenced_tables_exist_in_ddl():
 def test_core_machine_queries(repo: SnowflakeRepository, mock_conn):
     _, cur = mock_conn
 
-    # 1. get_machine: machine_id, line_id, machine_name, machine_type, criticality, model, install_date, _loaded_at
+    # 1. get_machine: machine_id, line_id, machine_name, machine_type, criticality, model, install_date, _loaded_at, health_status, plant_id
     cur.fetchone.return_value = (
         "M21", "L5", "Grinder 3", "GR-600", "CRITICAL", "GR-600",
-        date(2022, 1, 1), datetime.now(timezone.utc),
+        date(2022, 1, 1), datetime.now(timezone.utc), "CRITICAL", "PLT01",
     )
     m = repo.get_machine("M21")
     assert m is not None
     assert m.machine_id == "M21"
     assert m.line_id == "L5"
+    assert m.plant_id == "PLT01"
     sql, params = cur.execute.call_args[0]
     assert "COCO_FACTORY.CORE.MACHINE" in sql
+    assert "m.plant_id" in sql
     assert params == ("M21",)
 
     # 2. list_machines
     cur.fetchall.return_value = [
         ("M21", "L5", "Grinder 3", "GR-600", "CRITICAL", "GR-600",
-         date(2022, 1, 1), datetime.now(timezone.utc))
+         date(2022, 1, 1), datetime.now(timezone.utc), "CRITICAL", "PLT01")
     ]
     machines = repo.list_machines(line_id="L5")
     assert len(machines) == 1
+    assert machines[0].plant_id == "PLT01"
     sql, params = cur.execute.call_args[0]
     assert "COCO_FACTORY.CORE.MACHINE" in sql
+    assert "m.plant_id" in sql
     assert params == ("L5",)
 
 
@@ -515,12 +523,16 @@ def test_get_latest_health_assessment_queries_snowflake_with_no_memory_fallback(
 
     # 2. When DB has record in ANALYTICS.MACHINE_HEALTH_DAILY, it is used authoritatively
     cur.fetchone.return_value = (
-        "HA-M21-20260928", "M21", "CRITICAL", 35.0, "Critical alert threshold exceeded", date(2026, 9, 28)
+        "HA-M21-20260928", "M21", "CRITICAL", 0.95, "high", 3, date(2026, 9, 28)
     )
     db_assessment = repo.get_latest_health_assessment("M21")
     assert db_assessment is not None
     assert db_assessment.assessment_id == "HA-M21-20260928"
     assert db_assessment.health_status == HealthStatus.CRITICAL
+    assert db_assessment.health_score == 5.0  # round((1.0 - 0.95) * 100, 1)
+    sql, params = cur.execute.call_args[0]
+    assert "critical_alert_count" not in sql
+    assert "COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY" in sql
 
 
 def test_process_restart_preserves_authoritative_snowflake_state():
@@ -735,4 +747,121 @@ def test_get_plant_and_list_lines_behavioral_contract(repo: SnowflakeRepository,
 
     assert line_map["L5"].name == "Grinding & Finishing Line 5"
     assert line_map["L5"].target_units_per_hour == 90.0
+
+
+# ==============================================================================
+# 5. M6.4 Remediation Tests: Machine plant_id, Alert Mappings, and Analytics DDL
+# ==============================================================================
+
+def test_machine_model_plant_id_compatibility():
+    """Verify Machine domain model accepts optional plant_id with backwards compatibility."""
+    # With plant_id
+    m1 = Machine(
+        machine_id="M1",
+        line_id="L1",
+        machine_code="M1",
+        name="Machine 1",
+        plant_id="PLT01",
+    )
+    assert m1.plant_id == "PLT01"
+
+    # Backwards compatibility: plant_id omitted
+    m2 = Machine(
+        machine_id="M2",
+        line_id="L1",
+        machine_code="M2",
+        name="Machine 2",
+    )
+    assert m2.plant_id is None
+
+
+def test_explicit_alert_severity_mapping():
+    """Verify map_alert_severity explicitly maps canonical Snowflake values with safe fallbacks."""
+    from repositories.snowflake.snowflake_repository import map_alert_severity
+    from domain.enums import Severity
+
+    # Canonical Snowflake lowercase strings
+    assert map_alert_severity("critical") == Severity.CRITICAL
+    assert map_alert_severity("warning") == Severity.HIGH
+    assert map_alert_severity("warn") == Severity.HIGH
+
+    # Standard uppercase values
+    assert map_alert_severity("CRITICAL") == Severity.CRITICAL
+    assert map_alert_severity("HIGH") == Severity.HIGH
+    assert map_alert_severity("MEDIUM") == Severity.MEDIUM
+    assert map_alert_severity("LOW") == Severity.LOW
+
+    # Unknown and empty fallbacks
+    assert map_alert_severity("") == Severity.MEDIUM
+    assert map_alert_severity(None) == Severity.MEDIUM
+    assert map_alert_severity("unexpected_status") == Severity.MEDIUM
+
+
+def test_explicit_alert_status_mapping():
+    """Verify map_alert_status explicitly maps canonical Snowflake values with safe fallbacks."""
+    from repositories.snowflake.snowflake_repository import map_alert_status
+    from domain.enums import AlertStatus
+
+    # Canonical Snowflake lowercase strings
+    assert map_alert_status("open") == AlertStatus.OPEN
+    assert map_alert_status("acknowledged") == AlertStatus.INVESTIGATING
+    assert map_alert_status("closed") == AlertStatus.RESOLVED
+
+    # Standard uppercase values
+    assert map_alert_status("OPEN") == AlertStatus.OPEN
+    assert map_alert_status("INVESTIGATING") == AlertStatus.INVESTIGATING
+    assert map_alert_status("RESOLVED") == AlertStatus.RESOLVED
+    assert map_alert_status("ACTION_PROPOSED") == AlertStatus.ACTION_PROPOSED
+    assert map_alert_status("DISMISSED") == AlertStatus.DISMISSED
+
+    # Unknown and empty fallbacks
+    assert map_alert_status("") == AlertStatus.OPEN
+    assert map_alert_status(None) == AlertStatus.OPEN
+    assert map_alert_status("unknown_status") == AlertStatus.OPEN
+
+
+def test_alert_deserialization_and_filtering(repo: SnowflakeRepository, mock_conn):
+    """Verify get_alert and list_alerts deserialize canonical lowercase values and filter correctly."""
+    from domain.enums import AlertStatus, Severity, FailureMode
+    _, cur = mock_conn
+
+    # 1. get_alert deserialization
+    cur.fetchone.return_value = (
+        "ALT-000033", "M21", "C-M21-BRG", "critical", "closed",
+        "High bearing vibration exceedance", 0.95, "BEARING_DEGRADATION",
+        datetime(2026, 9, 28, 12, 0, tzinfo=timezone.utc), None, None,
+    )
+    alert = repo.get_alert("ALT-000033")
+    assert alert is not None
+    assert alert.alert_id == "ALT-000033"
+    assert alert.severity == Severity.CRITICAL
+    assert alert.status == AlertStatus.RESOLVED
+
+    # 2. list_alerts with status=AlertStatus.OPEN
+    cur.fetchall.return_value = [
+        ("ALT-000001", "M21", "C-M21-BRG", "warning", "open",
+         "Elevated vibration precursor", 0.70, "BEARING_DEGRADATION",
+         datetime(2026, 9, 28, 10, 0, tzinfo=timezone.utc), None, None)
+    ]
+    alerts = repo.list_alerts(machine_id="M21", status=AlertStatus.OPEN)
+    assert len(alerts) == 1
+    assert alerts[0].severity == Severity.HIGH
+    assert alerts[0].status == AlertStatus.OPEN
+    sql, _ = cur.execute.call_args[0]
+    assert "LOWER(status) = 'open'" in sql
+
+
+def test_analytics_ddl_case_insensitive_critical_matching():
+    """Verify 30_analytics_foundation.sql matches critical severity case-insensitively."""
+    ddl_path = (
+        Path(__file__).resolve().parent.parent.parent
+        / "snowflake"
+        / "ddl"
+        / "coco_factory"
+        / "30_analytics_foundation.sql"
+    )
+    ddl_content = ddl_path.read_text(encoding="utf-8")
+    assert "UPPER(SEVERITY) = 'CRITICAL'" in ddl_content.upper(), (
+        "Expected case-insensitive UPPER(severity) = 'CRITICAL' in 30_analytics_foundation.sql"
+    )
 

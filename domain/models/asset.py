@@ -42,6 +42,7 @@ class Machine(BaseModel):
     serial_number: str = "SN-2024-M204"
     commission_date: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    plant_id: Optional[str] = None
 
 
 class Component(BaseModel):

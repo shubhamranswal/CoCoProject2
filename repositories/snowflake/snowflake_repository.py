@@ -9,7 +9,7 @@ Follows AGENT.md:
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import json
 
 from domain.exceptions import UnsupportedOperationError
@@ -138,6 +138,55 @@ def _canonical_to_ml_prediction(cp: CanonicalPrediction) -> MLFailurePrediction:
     )
 
 
+def map_alert_severity(raw_severity: Optional[str]) -> Severity:
+    """Explicit mapping from canonical Snowflake/database severity strings to domain Severity enum.
+
+    Canonical CORE.ALERT values:
+    - 'critical' -> Severity.CRITICAL
+    - 'warning' -> Severity.HIGH (active condition-monitoring threshold exceedance)
+
+    Standard fallback for unknown/None values is Severity.MEDIUM.
+    """
+    if not raw_severity:
+        return Severity.MEDIUM
+    val = str(raw_severity).strip().lower()
+    if val == "critical":
+        return Severity.CRITICAL
+    elif val in ("warning", "warn", "high"):
+        return Severity.HIGH
+    elif val in ("medium", "med"):
+        return Severity.MEDIUM
+    elif val == "low":
+        return Severity.LOW
+    return Severity.MEDIUM
+
+
+def map_alert_status(raw_status: Optional[str]) -> AlertStatus:
+    """Explicit mapping from canonical Snowflake/database alert status strings to domain AlertStatus enum.
+
+    Canonical CORE.ALERT values:
+    - 'open' -> AlertStatus.OPEN
+    - 'acknowledged' -> AlertStatus.INVESTIGATING
+    - 'closed' -> AlertStatus.RESOLVED
+
+    Standard fallback for unknown/None values is AlertStatus.OPEN.
+    """
+    if not raw_status:
+        return AlertStatus.OPEN
+    val = str(raw_status).strip().lower()
+    if val == "open":
+        return AlertStatus.OPEN
+    elif val in ("closed", "resolved"):
+        return AlertStatus.RESOLVED
+    elif val in ("acknowledged", "investigating"):
+        return AlertStatus.INVESTIGATING
+    elif val == "action_proposed":
+        return AlertStatus.ACTION_PROPOSED
+    elif val == "dismissed":
+        return AlertStatus.DISMISSED
+    return AlertStatus.OPEN
+
+
 class SnowflakeRepository(
     MachineRepository,
     TelemetryRepository,
@@ -230,7 +279,8 @@ class SnowflakeRepository(
                 """
                 SELECT m.machine_id, m.line_id, m.machine_name, m.machine_type, m.criticality,
                        m.model, m.install_date, m._loaded_at,
-                       COALESCE(h.health_status, 'HEALTHY') AS current_health_status
+                       COALESCE(h.health_status, 'HEALTHY') AS current_health_status,
+                       m.plant_id
                 FROM COCO_FACTORY.CORE.MACHINE m
                 LEFT JOIN (
                     SELECT machine_id, health_status,
@@ -249,8 +299,13 @@ class SnowflakeRepository(
             curr_health = (
                 HealthStatus(health_val)
                 if health_val in HealthStatus._value2member_map_
-                else HealthStatus.HEALTHY
+                else (
+                    HealthStatus.DEGRADING
+                    if health_val in ("WARNING", "DEGRADING")
+                    else HealthStatus.HEALTHY
+                )
             )
+            plant_id_val = r[9] if len(r) > 9 and r[9] else None
             return Machine(
                 machine_id=m_id,
                 line_id=r[1],
@@ -265,6 +320,7 @@ class SnowflakeRepository(
                 serial_number=f"SN-{m_id}",
                 commission_date=r[6],
                 created_at=r[7] if r[7] else datetime.now(),
+                plant_id=plant_id_val,
             )
         finally:
             cur.close()
@@ -277,7 +333,8 @@ class SnowflakeRepository(
             query = """
                 SELECT m.machine_id, m.line_id, m.machine_name, m.machine_type, m.criticality,
                        m.model, m.install_date, m._loaded_at,
-                       COALESCE(h.health_status, 'HEALTHY') AS current_health_status
+                       COALESCE(h.health_status, 'HEALTHY') AS current_health_status,
+                       m.plant_id
                 FROM COCO_FACTORY.CORE.MACHINE m
                 LEFT JOIN (
                     SELECT machine_id, health_status,
@@ -299,8 +356,13 @@ class SnowflakeRepository(
                 curr_health = (
                     HealthStatus(health_val)
                     if health_val in HealthStatus._value2member_map_
-                    else HealthStatus.HEALTHY
+                    else (
+                        HealthStatus.DEGRADING
+                        if health_val in ("WARNING", "DEGRADING")
+                        else HealthStatus.HEALTHY
+                    )
                 )
+                plant_id_val = r[9] if len(r) > 9 and r[9] else None
                 machines.append(
                     Machine(
                         machine_id=m_id,
@@ -316,6 +378,7 @@ class SnowflakeRepository(
                         serial_number=f"SN-{m_id}",
                         commission_date=r[6],
                         created_at=r[7] if r[7] else datetime.now(),
+                        plant_id=plant_id_val,
                     )
                 )
             return machines
@@ -596,7 +659,7 @@ class SnowflakeRepository(
                 "FROM COCO_FACTORY.CORE.ALERT WHERE machine_id = %s "
             )
             if active_only:
-                sql += "AND status IN ('ACTIVE', 'OPEN') "
+                sql += "AND LOWER(status) IN ('active', 'open') "
             sql += "ORDER BY ts DESC"
             cur.execute(sql, (machine_id,))
             rows = cur.fetchall()
@@ -606,7 +669,7 @@ class SnowflakeRepository(
                     machine_id=r[1],
                     sensor_id=r[2] or "UNKNOWN",
                     detected_at=r[3],
-                    severity=Severity(r[4]) if r[4] in Severity._value2member_map_ else Severity.MEDIUM,
+                    severity=map_alert_severity(r[4]),
                     score=float(r[5] or 0.5),
                     metric_name=r[6] or "vibration_rms",
                     observed_value=float(r[7] or 0.0),
@@ -634,7 +697,7 @@ class SnowflakeRepository(
                 sql += "AND machine_id = %s "
                 params.append(machine_id)
             if active_only:
-                sql += "AND status IN ('ACTIVE', 'OPEN') "
+                sql += "AND LOWER(status) IN ('active', 'open') "
             sql += "ORDER BY ts DESC"
             cur.execute(sql, tuple(params))
             rows = cur.fetchall()
@@ -644,7 +707,7 @@ class SnowflakeRepository(
                     machine_id=r[1],
                     sensor_id=r[2] or "UNKNOWN",
                     detected_at=r[3],
-                    severity=Severity(r[4]) if r[4] in Severity._value2member_map_ else Severity.MEDIUM,
+                    severity=map_alert_severity(r[4]),
                     score=float(r[5] or 0.5),
                     metric_name=r[6] or "vibration_rms",
                     observed_value=float(r[7] or 0.0),
@@ -994,25 +1057,68 @@ class SnowflakeRepository(
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT 'HA-' || machine_id || '-' || TO_CHAR(metric_date, 'YYYYMMDD'), machine_id, "
-                "CASE WHEN critical_alert_count > 0 THEN 'CRITICAL' WHEN open_alerts > 0 THEN 'DEGRADING' ELSE 'HEALTHY' END, "
-                "GREATEST(0.0, 100.0 - (critical_alert_count * 25.0 + open_alerts * 10.0)), "
-                "CASE WHEN critical_alert_count > 0 THEN 'Critical alert threshold exceeded' ELSE 'Nominal operation' END, "
-                "metric_date "
-                "FROM COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY WHERE machine_id = %s "
-                "ORDER BY metric_date DESC LIMIT 1",
+                """
+                SELECT 'HA-' || machine_id || '-' || TO_CHAR(metric_date, 'YYYYMMDD'),
+                       machine_id,
+                       health_status,
+                       COALESCE(latest_failure_prob, 0.0),
+                       COALESCE(latest_risk_level, 'low'),
+                       COALESCE(open_alerts, 0),
+                       metric_date
+                FROM COCO_FACTORY.ANALYTICS.MACHINE_HEALTH_DAILY
+                WHERE machine_id = %s
+                ORDER BY metric_date DESC LIMIT 1
+                """,
                 (machine_id,),
             )
             r = cur.fetchone()
             if not r:
                 return None
+            assessment_id = r[0]
+            m_id = r[1]
+            raw_status = str(r[2] or "HEALTHY").strip()
+            fail_prob = float(r[3] or 0.0)
+            risk_level = str(r[4] or "low").strip()
+            open_alerts = int(r[5] or 0)
+            metric_dt = r[6]
+
+            if raw_status in HealthStatus._value2member_map_:
+                curr_health = HealthStatus(raw_status)
+            elif raw_status in ("WARNING", "DEGRADING"):
+                curr_health = HealthStatus.DEGRADING
+            else:
+                curr_health = HealthStatus.HEALTHY
+
+            # Authoritative derived health score bounded [0.0, 100.0]
+            if fail_prob > 0.0:
+                health_score = round(max(0.0, min(100.0, (1.0 - fail_prob) * 100.0)), 1)
+            elif curr_health == HealthStatus.CRITICAL:
+                health_score = 15.0
+            elif curr_health == HealthStatus.DEGRADING:
+                health_score = round(max(0.0, 100.0 - (open_alerts * 15.0)), 1)
+            else:
+                health_score = 100.0
+
+            if curr_health == HealthStatus.CRITICAL:
+                primary_concern = f"Critical condition detected: Failure probability {fail_prob:.2f}, risk level '{risk_level}'"
+            elif curr_health == HealthStatus.DEGRADING:
+                primary_concern = f"Degradation condition: Open alerts {open_alerts}, failure probability {fail_prob:.2f}"
+            else:
+                primary_concern = "Nominal operation"
+
+            updated_dt = (
+                datetime.combine(metric_dt, datetime.min.time(), tzinfo=timezone.utc)
+                if isinstance(metric_dt, date)
+                else (metric_dt if isinstance(metric_dt, datetime) else datetime.now(timezone.utc))
+            )
+
             return HealthAssessment(
-                assessment_id=r[0],
-                machine_id=r[1],
-                health_status=HealthStatus(r[2]),
-                health_score=float(r[3]),
-                primary_concern=r[4],
-                updated_at=datetime.combine(r[5], datetime.min.time()) if isinstance(r[5], date) else r[5],
+                assessment_id=assessment_id,
+                machine_id=m_id,
+                health_status=curr_health,
+                health_score=health_score,
+                primary_concern=primary_concern,
+                updated_at=updated_dt,
             )
         finally:
             cur.close()
@@ -1203,8 +1309,8 @@ class SnowflakeRepository(
                 alert_id=r[0],
                 machine_id=r[1],
                 component_id=r[2],
-                severity=Severity(r[3]),
-                status=AlertStatus(r[4]) if r[4] in AlertStatus._value2member_map_ else AlertStatus.OPEN,
+                severity=map_alert_severity(r[3]),
+                status=map_alert_status(r[4]),
                 trigger_reason=r[5],
                 risk_score=float(r[6]),
                 failure_mode=FailureMode(r[7]) if r[7] in FailureMode._value2member_map_ else FailureMode.BEARING_DEGRADATION,
@@ -1233,18 +1339,29 @@ class SnowflakeRepository(
                 sql += "AND machine_id = %s "
                 params.append(machine_id)
             if status:
-                sql += "AND status = %s "
-                params.append(status.value)
+                if status == AlertStatus.OPEN:
+                    sql += "AND LOWER(status) = 'open' "
+                elif status == AlertStatus.RESOLVED:
+                    sql += "AND LOWER(status) IN ('closed', 'resolved') "
+                elif status == AlertStatus.INVESTIGATING:
+                    sql += "AND LOWER(status) IN ('acknowledged', 'investigating') "
+                elif status == AlertStatus.ACTION_PROPOSED:
+                    sql += "AND LOWER(status) = 'action_proposed' "
+                elif status == AlertStatus.DISMISSED:
+                    sql += "AND LOWER(status) = 'dismissed' "
+                else:
+                    sql += "AND (status = %s OR LOWER(status) = %s) "
+                    params.extend([status.value, status.value.lower()])
             sql += "ORDER BY ts DESC"
-            cur.execute(sql, tuple(params))
+            cur.execute(sql, tuple(params) if params else None)
             rows = cur.fetchall()
             return [
                 Alert(
                     alert_id=r[0],
                     machine_id=r[1],
                     component_id=r[2],
-                    severity=Severity(r[3]),
-                    status=AlertStatus(r[4]) if r[4] in AlertStatus._value2member_map_ else AlertStatus.OPEN,
+                    severity=map_alert_severity(r[3]),
+                    status=map_alert_status(r[4]),
                     trigger_reason=r[5],
                     risk_score=float(r[6]),
                     failure_mode=FailureMode(r[7]) if r[7] in FailureMode._value2member_map_ else FailureMode.BEARING_DEGRADATION,

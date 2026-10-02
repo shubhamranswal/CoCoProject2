@@ -199,7 +199,7 @@ def test_streamlit_app_renders_and_navigates_all_views() -> None:
 
     script_path = str(Path(__file__).resolve().parent.parent / "app" / "streamlit_app.py")
     at = AppTest.from_file(script_path)
-    at.run()
+    at.run(timeout=10)
     assert len(at.exception) == 0, f"App execution failed: {at.exception}"
     assert len(at.markdown) > 0
 
@@ -219,7 +219,7 @@ def test_streamlit_app_renders_and_navigates_all_views() -> None:
     ]
     for view_name in views:
         at.session_state["active_nav"] = view_name
-        at.run()
+        at.run(timeout=10)
         assert len(at.exception) == 0, f"Exception rendering view {view_name}: {at.exception}"
         assert len(at.markdown) > 0, f"View {view_name} rendered 0 markdown elements"
 
@@ -245,15 +245,19 @@ def test_streamlit_app_rerun_resilience() -> None:
     assert len(at.exception) == 0
 
 
-def test_streamlit_app_snowflake_unavailable_guardrail() -> None:
+def test_streamlit_app_snowflake_unavailable_guardrail(monkeypatch) -> None:
     """Verify Snowflake unconfigured state displays explicit error banner without hanging."""
     from pathlib import Path
     from streamlit.testing.v1 import AppTest
 
+    monkeypatch.setenv("SNOWFLAKE_ACCOUNT", "")
+    monkeypatch.setenv("SNOWFLAKE_USER", "")
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "")
+
     script_path = str(Path(__file__).resolve().parent.parent / "app" / "streamlit_app.py")
     at = AppTest.from_file(script_path)
     at.session_state["backend_mode"] = "snowflake"
-    at.run()
+    at.run(timeout=10)
 
     assert len(at.exception) == 0
     assert any("STORAGE BACKEND UNAVAILABLE" in m.value for m in at.markdown)
