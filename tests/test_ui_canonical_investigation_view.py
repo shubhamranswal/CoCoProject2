@@ -469,7 +469,7 @@ class TestCanonicalInvestigationViewModernization:
         # Assertion 1: Dynamic asset name, machine ID, status, confidence, trigger info
         assert "ASSET: M21" in html
         assert "Grinding Machine 21" in html
-        assert "Reliability Investigation — INV-M21-20261002-001" in html
+        assert "Reliability Investigation - INV-M21-20261002-001" in html
         assert "BEARING_DEGRADATION" in html
         assert "95%" in html  # Confidence
         assert "PREDICTION" in html
@@ -646,3 +646,184 @@ class TestCanonicalInvestigationViewModernization:
         at_dark.session_state["active_nav"] = "AI Investigations"
         at_dark.run(timeout=10)
         assert not at_dark.exception
+
+    def test_assertion_15_recommendation_rendering_zero_raw_html_code_block_leakage(
+        self, facade_mock: MagicMock, canonical_bundle: Dict[str, Any]
+    ) -> None:
+        """Verify recommendation card rendering does NOT leak raw HTML markup as visible text.
+
+        Tests canonical M21 recommendation shape (empty action_description, populated statement,
+        suggested_next_step, suggested_parts, suggested_checklist).
+        Ensures zero 4+ space indented code blocks, zero blank line HTML terminations,
+        and that all semantic fields are cleanly and safely rendered.
+        """
+        import re
+
+        # Configure canonical M21 recommendation shape matching live Snowflake
+        rec = canonical_bundle["recommendations"][0]
+        rec.action_description = ""  # Live Snowflake has no ACTION_DESCRIPTION column
+        rec.statement = "Inspect the Drive-End Bearing Assembly on machine M21 to determine the extent of mechanical degradation."
+        rec.suggested_next_step = "Conduct non-invasive acoustic/vibration check during scheduled shift transition; replacement should be considered only if inspection confirms defect."
+        rec.suggested_parts = ["SP-002"]
+        rec.suggested_checklist = [
+            "Check bearing housing temperature with calibrated infrared thermometer",
+            "Measure radial and axial vibration FFT spectra",
+            "Inspect grease lubrication quality and contamination per DOC-001",
+        ]
+
+        markdown_calls: List[str] = []
+
+        def capture_markdown(body: Any, *args: Any, **kwargs: Any) -> None:
+            markdown_calls.append(str(body))
+
+        with patch("streamlit.markdown", side_effect=capture_markdown), \
+             patch("streamlit.selectbox", return_value="INV-M21-20261002-001"), \
+             patch("streamlit.columns", side_effect=lambda s: [MagicMock()] * (len(s) if isinstance(s, (list, tuple)) else int(s))), \
+             patch("streamlit.button", return_value=False), \
+             patch("streamlit.dataframe"), \
+             patch("streamlit.expander", return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())):
+            render_investigations_view(facade_mock)
+
+        # Locate the recommendation card markdown call
+        rec_cards = [call for call in markdown_calls if "border-left: 4px solid #0284c7;" in call]
+        assert len(rec_cards) == 1, f"Expected exactly 1 recommendation card call, got {len(rec_cards)}"
+        card_html = rec_cards[0]
+
+        # 1. Verify NO line starts with 4+ spaces of indentation (which triggers CommonMark <pre><code>)
+        lines = card_html.split("\n")
+        for line_idx, line in enumerate(lines):
+            assert not re.match(r"^[ ]{4,}", line), (
+                f"Line {line_idx} has 4+ leading spaces which triggers an indented code block: {line!r}"
+            )
+
+        # 2. Verify NO internal blank lines between HTML elements
+        for line_idx, line in enumerate(lines):
+            if line_idx > 0 and line_idx < len(lines) - 1:
+                assert line.strip() != "", f"Line {line_idx} is a blank line inside the HTML card: {line!r}"
+
+        # 3. Verify semantic content remains fully visible
+        assert "Inspect Drive-End Bearing Assembly" in card_html
+        assert "STATUS: ADVISORY (NON-EXECUTABLE)" in card_html
+        assert "PRIORITY: HIGH" in card_html
+        assert "ACTION: INSPECT_BEARING_ASSEMBLY" in card_html
+        assert "Inspect the Drive-End Bearing Assembly on machine M21" in card_html
+        assert "Suggested Next Step:" in card_html
+        assert "Conduct non-invasive acoustic/vibration check" in card_html
+        assert "Required / Suggested Parts: <b>SP-002</b>" in card_html
+        assert "Suggested Procedure Checklist:" in card_html
+        assert "Check bearing housing temperature with calibrated infrared thermometer" in card_html
+        assert "Measure radial and axial vibration FFT spectra" in card_html
+        assert "Inspect grease lubrication quality and contamination per DOC-001" in card_html
+        assert "EV-S-M21-VIB--001" in card_html
+
+        # 4. Verify accidental HTML tags in semantic fields are stripped cleanly
+        rec.suggested_next_step = "<div class='injected'><b>Perform acoustic check</b></div>"
+        markdown_calls.clear()
+        with patch("streamlit.markdown", side_effect=capture_markdown), \
+             patch("streamlit.selectbox", return_value="INV-M21-20261002-001"), \
+             patch("streamlit.columns", side_effect=lambda s: [MagicMock()] * (len(s) if isinstance(s, (list, tuple)) else int(s))), \
+             patch("streamlit.button", return_value=False), \
+             patch("streamlit.dataframe"), \
+             patch("streamlit.expander", return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())):
+            render_investigations_view(facade_mock)
+
+        sanitized_cards = [call for call in markdown_calls if "border-left: 4px solid #0284c7;" in call]
+        assert len(sanitized_cards) == 1
+        # The injected <div class='injected'> must have been stripped
+        assert "<div class='injected'>" not in sanitized_cards[0]
+        assert "Perform acoustic check" in sanitized_cards[0]
+
+    def test_assertion_16_hypothesis_rendering_zero_raw_html_code_block_leakage(
+        self, facade_mock: MagicMock, canonical_bundle: Dict[str, Any]
+    ) -> None:
+        """Verify hypothesis card rendering does NOT leak raw HTML markup as visible text.
+
+        Tests canonical M21 hypothesis shape (empty/None rationale, populated statement,
+        supporting_evidence_ids).
+        Ensures zero 4+ space indented code blocks, zero blank line HTML terminations,
+        and that all semantic fields are cleanly and safely rendered.
+        """
+        import re
+
+        # Configure canonical M21 hypothesis shape matching live Snowflake (RATIONALE is NULL)
+        hyp = canonical_bundle["hypotheses"][0]
+        hyp.hypothesis_name = "Drive-End Bearing Mechanical Degradation"
+        hyp.statement = "Machine M21 drive-end bearing is undergoing raceway spalling and progressive mechanical fatigue."
+        hyp.rationale = None  # Live Snowflake has NULL rationale
+        hyp.confidence = 0.85
+        hyp.status = "SUPPORTED"
+        hyp.supporting_evidence_ids = ["EV-S-M21-VIB--001", "EV-S-M21-BTMP--001", "EV-PRED-M21-001"]
+        hyp.contradicting_evidence_ids = []
+
+        markdown_calls: List[str] = []
+
+        def capture_markdown(body: Any, *args: Any, **kwargs: Any) -> None:
+            markdown_calls.append(str(body))
+
+        with patch("streamlit.markdown", side_effect=capture_markdown), \
+             patch("streamlit.selectbox", return_value="INV-M21-20261002-001"), \
+             patch("streamlit.columns", side_effect=lambda s: [MagicMock()] * (len(s) if isinstance(s, (list, tuple)) else int(s))), \
+             patch("streamlit.button", return_value=False), \
+             patch("streamlit.dataframe"), \
+             patch("streamlit.expander", return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())):
+            render_investigations_view(facade_mock)
+
+        # Locate the hypothesis card markdown call
+        hyp_cards = [call for call in markdown_calls if "Drive-End Bearing Mechanical Degradation" in call]
+        assert len(hyp_cards) == 1, f"Expected exactly 1 hypothesis card call, got {len(hyp_cards)}"
+        card_html = hyp_cards[0]
+
+        # 1. Verify NO line starts with 4+ spaces of indentation (which triggers CommonMark <pre><code>)
+        lines = card_html.split("\n")
+        for line_idx, line in enumerate(lines):
+            assert not re.match(r"^[ ]{4,}", line), (
+                f"Line {line_idx} has 4+ leading spaces which triggers an indented code block: {line!r}"
+            )
+
+        # 2. Verify NO internal blank lines between HTML elements
+        for line_idx, line in enumerate(lines):
+            if line_idx > 0 and line_idx < len(lines) - 1:
+                assert line.strip() != "", f"Line {line_idx} is a blank line inside the HTML card: {line!r}"
+
+        # 3. Verify semantic content remains fully visible
+        assert "Drive-End Bearing Mechanical Degradation" in card_html
+        assert "Machine M21 drive-end bearing is undergoing raceway spalling" in card_html
+        assert "85% conf" in card_html
+        assert "SUPPORTED" in card_html
+        assert "SUPPORTS: EV-S-M21-VIB--001" in card_html
+        assert "SUPPORTS: EV-S-M21-BTMP--001" in card_html
+
+        # 4. Verify empty optional rationale does NOT produce an empty <div> with blank lines
+        assert 'color: var(--text-secondary); margin-top: 6px;"></div>' not in card_html
+        assert 'color: var(--text-secondary); margin-top: 6px;">\n' not in card_html
+
+        # 5. Verify populated optional rationale renders cleanly when present
+        hyp.rationale = "Harmonic peak detected at 120Hz confirming bearing race spalling."
+        markdown_calls.clear()
+        with patch("streamlit.markdown", side_effect=capture_markdown), \
+             patch("streamlit.selectbox", return_value="INV-M21-20261002-001"), \
+             patch("streamlit.columns", side_effect=lambda s: [MagicMock()] * (len(s) if isinstance(s, (list, tuple)) else int(s))), \
+             patch("streamlit.button", return_value=False), \
+             patch("streamlit.dataframe"), \
+             patch("streamlit.expander", return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())):
+            render_investigations_view(facade_mock)
+
+        populated_cards = [call for call in markdown_calls if "Drive-End Bearing Mechanical Degradation" in call]
+        assert len(populated_cards) == 1
+        assert "Harmonic peak detected at 120Hz" in populated_cards[0]
+
+        # 6. Verify accidental HTML tags in dynamic fields are sanitized
+        hyp.statement = "<div class='malicious'>Malicious statement</div>"
+        markdown_calls.clear()
+        with patch("streamlit.markdown", side_effect=capture_markdown), \
+             patch("streamlit.selectbox", return_value="INV-M21-20261002-001"), \
+             patch("streamlit.columns", side_effect=lambda s: [MagicMock()] * (len(s) if isinstance(s, (list, tuple)) else int(s))), \
+             patch("streamlit.button", return_value=False), \
+             patch("streamlit.dataframe"), \
+             patch("streamlit.expander", return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())):
+            render_investigations_view(facade_mock)
+
+        sanitized_hyp = [call for call in markdown_calls if "Drive-End Bearing Mechanical Degradation" in call]
+        assert len(sanitized_hyp) == 1
+        assert "<div class='malicious'>" not in sanitized_hyp[0]
+        assert "Malicious statement" in sanitized_hyp[0]

@@ -16,6 +16,9 @@ Follows Sections 13, 14, 15, 16, 17, 18, 19, 20, 21 of DeRule Product Specificat
 
 from __future__ import annotations
 
+import html
+import re
+from typing import Any
 import streamlit as st
 
 from app.streamlit.components.approvals import render_approval_panel
@@ -23,6 +26,15 @@ from app.streamlit.components.evidence import render_evidence_panel
 from app.streamlit.components.timelines import render_investigation_timeline
 from app.streamlit.services.view_service import CommandCenterFacade
 from app.streamlit.state import navigate_to
+
+
+def _clean_semantic_text(val: Any) -> str:
+    """Normalize and strip presentation markup, returning clean semantic text."""
+    if val is None:
+        return ""
+    text = str(val).strip()
+    text = re.sub(r"<[^>]+>", "", text)
+    return text.strip()
 
 
 def render_investigations_view(facade: CommandCenterFacade) -> None:
@@ -46,7 +58,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
             "Select Investigation Case:",
             inv_ids,
             index=inv_ids.index(cur_inv_id) if cur_inv_id in inv_ids else 0,
-            format_func=lambda x: f"{x} — Machine {facade.get_investigation_detail(x)['investigation'].machine_id if facade.get_investigation_detail(x) else x}",
+            format_func=lambda x: f"{x} - Machine {facade.get_investigation_detail(x)['investigation'].machine_id if facade.get_investigation_detail(x) else x}",
             key="inv_case_selector",
         )
         if chosen_inv_id != cur_inv_id:
@@ -119,7 +131,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
                     <span class="badge badge-critical" style="margin-left: 6px;">{inv.failure_mode.value}</span>
                     <span class="badge badge-neutral" style="margin-left: 6px;">COMPONENT: {component_name}</span>
                     <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
-                        Reliability Investigation — {inv.investigation_id}
+                        Reliability Investigation - {inv.investigation_id}
                     </div>
                     <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
                         Target Equipment: <b>{inv.machine_id} ({machine_name})</b> &nbsp;|&nbsp; Trigger: <b>{trigger_str}</b> (<code>{trigger_ref}</code>) &nbsp;|&nbsp; Completed: <b>{completed_str}</b>
@@ -220,60 +232,64 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
 
     # 2. Hypothesis Comparison
     st.markdown(
-        """
-        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">
-            Hypothesis Evaluation & Differential Diagnosis
-        </div>
-        """,
+        '<div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">'
+        'Hypothesis Evaluation & Differential Diagnosis'
+        '</div>',
         unsafe_allow_html=True,
     )
     if hypotheses:
         h_cols = st.columns(len(hypotheses))
         for col, h in zip(h_cols, hypotheses):
             with col:
-                is_supported = (h.status == "SUPPORTED")
+                h_status_val = _clean_semantic_text(getattr(h.status, "value", h.status))
+                is_supported = (h_status_val == "SUPPORTED")
                 badge_type = "badge-critical" if is_supported else "badge-neutral"
                 border_col = "#dc2626" if is_supported else "var(--border-subtle)"
+                conf_val = f"{h.confidence * 100:.0f}% conf" if h.confidence is not None else "--"
 
-                sup_badges = "".join([f'<span class="badge badge-healthy" style="margin-right: 4px; font-size: 10px;">SUPPORTS: {eid}</span>' for eid in (h.supporting_evidence_ids or [])])
-                con_badges = "".join([f'<span class="badge badge-critical" style="margin-right: 4px; font-size: 10px;">CONTRADICTS: {eid}</span>' for eid in (h.contradicting_evidence_ids or [])])
+                hyp_name_clean = html.escape(_clean_semantic_text(h.hypothesis_name))
 
-                evidence_markup = ""
-                if sup_badges or con_badges:
-                    evidence_markup = f"""
-                    <div style="margin-top: 8px; border-top: 1px solid var(--border-subtle); padding-top: 6px;">
-                        <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Evidence Grounding:</span>
-                        <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">{sup_badges}{con_badges}</div>
-                    </div>
-                    """
-
-                statement_markup = ""
-                if getattr(h, "statement", None):
-                    statement_markup = f"""
-                    <div style="font-size: 12px; color: var(--text-primary); font-weight: 500; margin-top: 4px;">
-                        {h.statement}
-                    </div>
-                    """
-
-                st.markdown(
-                    f"""
-                    <div class="ind-card" style="border: 1px solid {border_col};">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="badge {badge_type}">{h.status}</span>
-                            <span style="font-size: 11px; color: var(--text-muted);">{h.confidence * 100:.0f}% conf</span>
-                        </div>
-                        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
-                            {h.hypothesis_name}
-                        </div>
-                        {statement_markup}
-                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">
-                            {h.rationale}
-                        </div>
-                        {evidence_markup}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
+                statement_clean = _clean_semantic_text(getattr(h, "statement", None))
+                statement_html = (
+                    f'<div style="font-size: 12px; color: var(--text-primary); font-weight: 500; margin-top: 4px;">{html.escape(statement_clean)}</div>'
+                    if statement_clean else ""
                 )
+
+                rationale_clean = _clean_semantic_text(getattr(h, "rationale", None))
+                rationale_html = (
+                    f'<div style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">{html.escape(rationale_clean)}</div>'
+                    if rationale_clean else ""
+                )
+
+                sup_ids = [_clean_semantic_text(eid) for eid in (h.supporting_evidence_ids or []) if _clean_semantic_text(eid)]
+                con_ids = [_clean_semantic_text(eid) for eid in (h.contradicting_evidence_ids or []) if _clean_semantic_text(eid)]
+                sup_badges = "".join([f'<span class="badge badge-healthy" style="margin-right: 4px; font-size: 10px;">SUPPORTS: {html.escape(eid)}</span>' for eid in sup_ids])
+                con_badges = "".join([f'<span class="badge badge-critical" style="margin-right: 4px; font-size: 10px;">CONTRADICTS: {html.escape(eid)}</span>' for eid in con_ids])
+
+                evidence_html = ""
+                if sup_badges or con_badges:
+                    evidence_html = (
+                        f'<div style="margin-top: 8px; border-top: 1px solid var(--border-subtle); padding-top: 6px;">'
+                        f'<span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Evidence Grounding:</span>'
+                        f'<div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">{sup_badges}{con_badges}</div>'
+                        f'</div>'
+                    )
+
+                card_html = (
+                    f'<div class="ind-card" style="border: 1px solid {border_col};">'
+                    f'<div style="display: flex; justify-content: space-between; align-items: center;">'
+                    f'<span class="badge {badge_type}">{html.escape(h_status_val)}</span>'
+                    f'<span style="font-size: 11px; color: var(--text-muted);">{conf_val}</span>'
+                    f'</div>'
+                    f'<div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">'
+                    f'{hyp_name_clean}'
+                    f'</div>'
+                    f'{statement_html}'
+                    f'{rationale_html}'
+                    f'{evidence_html}'
+                    f'</div>'
+                )
+                st.markdown(card_html, unsafe_allow_html=True)
     else:
         st.info("No hypothesis records attached.")
 
@@ -282,11 +298,9 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
     # 3. Finding Panel (Multi-Finding: Root Cause, Operational Impact, Inventory Risk)
     if findings:
         st.markdown(
-            f"""
-            <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">
-                Synthesized Investigation Findings ({len(findings)} Findings)
-            </div>
-            """,
+            f'<div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">'
+            f'Synthesized Investigation Findings ({len(findings)} Findings)'
+            f'</div>',
             unsafe_allow_html=True,
         )
         for idx, f in enumerate(findings):
@@ -295,32 +309,33 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
             title_prefix = "ROOT CAUSE FINDING" if is_primary else f"FINDING #{idx + 1}"
             border_style = "border-left: 4px solid #dc2626;" if is_primary else "border-left: 4px solid var(--primary-accent);"
 
-            statement_html = ""
-            if getattr(f, "statement", None):
-                statement_html = f"<div style='font-size: 12px; color: var(--text-secondary); margin-top: 4px; font-style: italic;'>{f.statement}</div>"
+            conf_display = f"{f.confidence * 100:.0f}%" if f.confidence is not None else "--"
+            stmt_clean = _clean_semantic_text(getattr(f, "statement", None))
+            statement_html = (
+                f"<div style='font-size: 12px; color: var(--text-secondary); margin-top: 4px; font-style: italic;'>{html.escape(stmt_clean)}</div>"
+                if stmt_clean else ""
+            )
 
-            refs = getattr(f, "evidence_refs", []) or getattr(f, "supporting_evidence_ids", [])
-            refs_badges = "".join([f"<span class='badge badge-neutral' style='font-size: 10px; margin-right: 4px;'>{r}</span>" for r in refs])
+            refs = getattr(f, "evidence_refs", []) or getattr(f, "supporting_evidence_ids", []) or []
+            refs_badges = "".join([f"<span class='badge badge-neutral' style='font-size: 10px; margin-right: 4px;'>{html.escape(_clean_semantic_text(r))}</span>" for r in refs if _clean_semantic_text(r)])
             refs_html = f"<div style='margin-top: 6px;'><span style='font-size: 10px; color: var(--text-muted); text-transform: uppercase;'>Evidence Grounding: </span>{refs_badges}</div>" if refs_badges else ""
 
-            st.markdown(
-                f"""
-                <div class="{card_class}" style="{border_style} margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 11px; font-weight: 700; color: #dc2626; text-transform: uppercase; letter-spacing: 0.05em;">
-                            {title_prefix} (CONFIDENCE: {f.confidence * 100:.0f}%)
-                        </span>
-                        <span class="badge badge-neutral">ID: {f.finding_id}</span>
-                    </div>
-                    <div style="font-size: 15px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
-                        {f.summary}
-                    </div>
-                    {statement_html}
-                    {refs_html}
-                </div>
-                """,
-                unsafe_allow_html=True,
+            finding_card_html = (
+                f'<div class="{card_class}" style="{border_style} margin-bottom: 12px;">'
+                f'<div style="display: flex; justify-content: space-between; align-items: center;">'
+                f'<span style="font-size: 11px; font-weight: 700; color: #dc2626; text-transform: uppercase; letter-spacing: 0.05em;">'
+                f'{title_prefix} (CONFIDENCE: {conf_display})'
+                f'</span>'
+                f'<span class="badge badge-neutral">ID: {html.escape(_clean_semantic_text(f.finding_id))}</span>'
+                f'</div>'
+                f'<div style="font-size: 15px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">'
+                f'{html.escape(_clean_semantic_text(f.summary))}'
+                f'</div>'
+                f'{statement_html}'
+                f'{refs_html}'
+                f'</div>'
             )
+            st.markdown(finding_card_html, unsafe_allow_html=True)
 
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
@@ -353,30 +368,56 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
     # 4. Recommendation Panel (Strictly ADVISORY & NON-EXECUTABLE)
     if recommendations:
         st.markdown(
-            f"""
-            <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">
-                Advisory Recommendations ({len(recommendations)} Items)
-            </div>
-            """,
+            f'<div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">'
+            f'Advisory Recommendations ({len(recommendations)} Items)'
+            f'</div>',
             unsafe_allow_html=True,
         )
         for rec in recommendations:
-            priority_val = rec.priority.value if hasattr(rec.priority, "value") else str(rec.priority)
-            parts_str = ", ".join(rec.suggested_parts) if rec.suggested_parts else "None required"
+            priority_val = _clean_semantic_text(getattr(rec.priority, "value", rec.priority))
+            action_type_clean = _clean_semantic_text(rec.action_type)
+            title_clean = html.escape(_clean_semantic_text(rec.title))
+
+            # Robust fallback for description / statement / rationale
+            desc_raw = getattr(rec, "action_description", "") or getattr(rec, "statement", "") or getattr(rec, "rationale", "")
+            desc_clean = _clean_semantic_text(desc_raw)
+            desc_html = f'<div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">{html.escape(desc_clean)}</div>' if desc_clean else ""
+
+            # Suggested next step
+            next_step_clean = _clean_semantic_text(getattr(rec, "suggested_next_step", None))
             next_step_html = (
-                f"<div style='font-size: 12px; color: var(--text-primary); margin-top: 6px;'><b>Suggested Next Step:</b> {rec.suggested_next_step}</div>"
-                if getattr(rec, "suggested_next_step", None) else ""
+                f'<div style="font-size: 12px; color: var(--text-primary); margin-top: 6px;"><b>Suggested Next Step:</b> {html.escape(next_step_clean)}</div>'
+                if next_step_clean else ""
             )
-            checklist_items = "".join([f"<li><span style='font-size: 12px; color: var(--text-secondary);'>{item}</span></li>" for item in getattr(rec, "suggested_checklist", [])])
+
+            # Suggested parts
+            parts_list = [
+                _clean_semantic_text(p) for p in (rec.suggested_parts if isinstance(rec.suggested_parts, list) else [rec.suggested_parts])
+                if _clean_semantic_text(p)
+            ]
+            parts_str = ", ".join(parts_list) if parts_list else "None required"
+            parts_html = f'<div style="font-size: 11px; color: var(--primary-accent); margin-top: 6px;">Required / Suggested Parts: <b>{html.escape(parts_str)}</b></div>'
+
+            # Suggested checklist
+            checklist_items = []
+            for item in getattr(rec, "suggested_checklist", []) or []:
+                item_clean = _clean_semantic_text(item)
+                if item_clean:
+                    checklist_items.append(f"<li><span style='font-size: 12px; color: var(--text-secondary);'>{html.escape(item_clean)}</span></li>")
             checklist_html = (
-                f"<div style='margin-top: 8px;'><span style='font-size: 11px; font-weight: 600; color: var(--text-primary); text-transform: uppercase;'>Suggested Procedure Checklist:</span><ul style='margin-top: 4px; padding-left: 20px;'>{checklist_items}</ul></div>"
+                f"<div style='margin-top: 8px;'><span style='font-size: 11px; font-weight: 600; color: var(--text-primary); text-transform: uppercase;'>Suggested Procedure Checklist:</span><ul style='margin-top: 4px; padding-left: 20px;'>{''.join(checklist_items)}</ul></div>"
                 if checklist_items else ""
             )
-            rec_evidence = getattr(rec, "evidence_refs", []) or getattr(rec, "evidence_ids", [])
-            rec_ev_badges = "".join([f"<span class='badge badge-neutral' style='font-size: 10px; margin-right: 4px;'>{reid}</span>" for reid in rec_evidence])
+
+            # Evidence badges
+            rec_evidence = getattr(rec, "evidence_refs", []) or getattr(rec, "evidence_ids", []) or []
+            ev_badges = [
+                f"<span class='badge badge-neutral' style='font-size: 10px; margin-right: 4px;'>{html.escape(_clean_semantic_text(reid))}</span>"
+                for reid in rec_evidence if _clean_semantic_text(reid)
+            ]
             rec_ev_html = (
-                f"<div style='margin-top: 6px;'><span style='font-size: 10px; color: var(--text-muted); text-transform: uppercase;'>Evidence: </span>{rec_ev_badges}</div>"
-                if rec_ev_badges else ""
+                f"<div style='margin-top: 6px;'><span style='font-size: 10px; color: var(--text-muted); text-transform: uppercase;'>Evidence: </span>{''.join(ev_badges)}</div>"
+                if ev_badges else ""
             )
 
             # Status badge logic based on governed proposal state
@@ -387,41 +428,36 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
             if is_proposed and action_proposal.status == "PENDING_APPROVAL":
                 status_badge = '<span class="badge badge-warning" style="font-weight: 700;">PENDING HUMAN APPROVAL</span>'
             elif is_proposed and action_proposal.status == "APPROVED":
-                status_badge = '<span class="badge badge-healthy" style="font-weight: 700;">APPROVED — READY FOR SEPARATE GOVERNED EXECUTION</span>'
+                status_badge = '<span class="badge badge-healthy" style="font-weight: 700;">APPROVED - READY FOR SEPARATE GOVERNED EXECUTION</span>'
             elif is_proposed and action_proposal.status == "REJECTED":
                 status_badge = '<span class="badge badge-critical" style="font-weight: 700;">PROPOSAL REJECTED</span>'
             else:
                 status_badge = '<span class="badge badge-info" style="font-weight: 700;">STATUS: ADVISORY (NON-EXECUTABLE)</span>'
 
-            st.markdown(
-                f"""
-                <div class="ind-card" style="border-left: 4px solid #0284c7;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-                        <div>
-                            {status_badge}
-                            <span class="badge badge-critical" style="margin-left: 6px;">PRIORITY: {priority_val}</span>
-                            <span class="badge badge-neutral" style="margin-left: 6px;">ACTION: {rec.action_type}</span>
-                        </div>
-                        <div style="font-size: 11px; color: var(--text-muted);">
-                            Est. Downtime: <b>{rec.estimated_downtime_hours}h</b>
-                        </div>
-                    </div>
-                    <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-top: 8px;">
-                        {rec.title}
-                    </div>
-                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
-                        {rec.action_description}
-                    </div>
-                    {next_step_html}
-                    <div style="font-size: 11px; color: var(--primary-accent); margin-top: 6px;">
-                        Required / Suggested Parts: <b>{parts_str}</b>
-                    </div>
-                    {checklist_html}
-                    {rec_ev_html}
-                </div>
-                """,
-                unsafe_allow_html=True,
+            # Build card HTML with zero line indentation to eliminate CommonMark indented code block parsing
+            card_html = (
+                f'<div class="ind-card" style="border-left: 4px solid #0284c7;">'
+                f'<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">'
+                f'<div>'
+                f'{status_badge}'
+                f'<span class="badge badge-critical" style="margin-left: 6px;">PRIORITY: {priority_val}</span>'
+                f'<span class="badge badge-neutral" style="margin-left: 6px;">ACTION: {action_type_clean}</span>'
+                f'</div>'
+                f'<div style="font-size: 11px; color: var(--text-muted);">'
+                f'Est. Downtime: <b>{rec.estimated_downtime_hours}h</b>'
+                f'</div>'
+                f'</div>'
+                f'<div style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-top: 8px;">'
+                f'{title_clean}'
+                f'</div>'
+                f'{desc_html}'
+                f'{next_step_html}'
+                f'{parts_html}'
+                f'{checklist_html}'
+                f'{rec_ev_html}'
+                f'</div>'
             )
+            st.markdown(card_html, unsafe_allow_html=True)
 
             # Explicit human submission button when no proposal exists yet
             if not is_proposed:

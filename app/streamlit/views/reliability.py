@@ -1,4 +1,4 @@
-"""Reliability View — Fleet Risk & Failure Analysis.
+"""Reliability View - Fleet Risk & Failure Analysis.
 
 Follows Section 28 of AGENT.md:
 - Fleet health distribution
@@ -123,7 +123,7 @@ def render_reliability_view(facade: CommandCenterFacade) -> None:
                     f"""
                     <div class="ind-card" style="margin-bottom: 8px;">
                         <span class="badge badge-critical">{a.severity.value}</span>
-                        <span style="font-size: 12px; font-weight: 700; color: var(--text-primary); margin-left: 6px;">{a.machine_id} — {a.alert_id}</span>
+                        <span style="font-size: 12px; font-weight: 700; color: var(--text-primary); margin-left: 6px;">{a.machine_id} - {a.alert_id}</span>
                         <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">{a.trigger_reason}</div>
                     </div>
                     """,
@@ -177,7 +177,7 @@ def render_reliability_view(facade: CommandCenterFacade) -> None:
     if failures:
         for f in failures:
             st.markdown(
-                f"- **{f.occurred_at.strftime('%Y-%m-%d')}** (`{f.machine_id}`): **{f.failure_mode.value}** — Root Cause: {f.root_cause} | Downtime: {f.downtime_hours}h | Action: {f.maintenance_action_taken}",
+                f"- **{f.occurred_at.strftime('%Y-%m-%d')}** (`{f.machine_id}`): **{f.failure_mode.value}** - Root Cause: {f.root_cause} | Downtime: {f.downtime_hours}h | Action: {f.maintenance_action_taken}",
                 unsafe_allow_html=True,
             )
     else:

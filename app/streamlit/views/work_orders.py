@@ -51,7 +51,7 @@ def render_work_orders_view(facade: CommandCenterFacade) -> None:
                 "Select Work Order:",
                 wo_ids,
                 index=wo_ids.index(cur_wo_id) if cur_wo_id in wo_ids else 0,
-                format_func=lambda x: f"{x} — {facade.get_work_order_detail(x)['work_order'].title if facade.get_work_order_detail(x) else x}",
+                format_func=lambda x: f"{x} - {facade.get_work_order_detail(x)['work_order'].title if facade.get_work_order_detail(x) else x}",
                 key="wo_dropdown_selector",
             )
             if chosen_wo_id != cur_wo_id:

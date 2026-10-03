@@ -1,6 +1,6 @@
 # Agent Workflows
 
-**Product:** Factory Reliability Command Center
+**Product:** DeRule Command Center
 **Document:** `agent-workflows.md`
 **Version:** 1.0
 **Status:** Foundational Agent Workflow Specification
@@ -13,7 +13,7 @@
 
 # 1. Purpose
 
-This document defines the operational workflows of the Factory Reliability Command Center's agentic intelligence layer.
+This document defines the operational workflows of the DeRule Command Center's agentic intelligence layer.
 
 It specifies:
 
@@ -343,7 +343,7 @@ Shift-based OEE analysis
 ### User Trigger
 
 ```text
-"Why is M204 at risk?"
+"Why is M21 at risk?"
 ```
 
 ### Workflow Trigger
@@ -446,7 +446,7 @@ Example:
 Alert:
 
 Machine:
-M204
+M21
 
 Signal:
 Vibration RMS
@@ -743,7 +743,7 @@ Example:
   "evidence_id": "E-001",
   "type": "TELEMETRY",
   "source": "sensor_measurement",
-  "entity_id": "M204",
+  "entity_id": "M21",
   "metric": "vibration_rms",
   "observed_value": 0.82,
   "baseline_value": 0.55,
@@ -795,7 +795,7 @@ Example:
 ```text
 Finding:
 
-M204 shows a pattern consistent with
+M21 shows a pattern consistent with
 bearing degradation.
 
 Confidence:
@@ -893,7 +893,7 @@ confidence
 Example:
 
 ```text
-M204
+M21
 
 Failure Mode:
 Bearing degradation
@@ -991,7 +991,7 @@ Availability Loss
  ↓
 Downtime
  ↓
-M204
+M21
  ↓
 Bearing Failure
 ```
@@ -1146,7 +1146,7 @@ Before creation:
 
 ```text
 Asset:
-M204
+M21
 
 Problem:
 Potential bearing degradation
@@ -1303,7 +1303,7 @@ OEE
 ```text
 {
   "verification_status": "RECOVERED",
-  "asset_id": "M204",
+  "asset_id": "M21",
   "pre_maintenance_risk": 0.87,
   "post_maintenance_risk": 0.21,
   "vibration_change": "-43%",
@@ -1333,7 +1333,7 @@ Users can initiate workflows through Streamlit.
 Example:
 
 ```text
-"Why is M204 at risk?"
+"Why is M21 at risk?"
 ```
 
 Flow:
@@ -1378,7 +1378,7 @@ GENERAL_ANALYTICS
 # 54. Example User Questions
 
 ```text
-Why is M204 at risk?
+Why is M21 at risk?
 
 Which machines are likely to fail
 within the next 72 hours?
@@ -1396,7 +1396,7 @@ Show me all high-risk assets.
 
 Why did defect rate increase?
 
-Create a work order for M204.
+Create a work order for M21.
 ```
 
 ---
@@ -1672,7 +1672,7 @@ Agent asks:
 
 ```text
 "What inspection procedure should be used
-for M204's bearing assembly?"
+for M21's bearing assembly?"
 ```
 
 Search returns:
@@ -2226,7 +2226,7 @@ Example:
 User:
 
 ```text
-"Why is M204 at risk?"
+"Why is M21 at risk?"
 ```
 
 Likely tools:
@@ -2319,7 +2319,7 @@ Example:
 Reliability Agent
         ↓
 {
-  "asset_id": "M204",
+  "asset_id": "M21",
   "finding": "Bearing degradation likely",
   "confidence": 0.87,
   "recommendation_id": "REC-204"
@@ -2361,7 +2361,7 @@ Use structured workflow state.
 Bad:
 
 ```text
-"Hey Maintenance Agent, I think maybe M204
+"Hey Maintenance Agent, I think maybe M21
 has some bearing issue..."
 ```
 
@@ -2369,7 +2369,7 @@ Preferred:
 
 ```text
 {
-  "asset_id": "M204",
+  "asset_id": "M21",
   "failure_mode": "BEARING_DEGRADATION",
   "confidence": 0.87,
   "recommendation": "INSPECT_BEARING"
@@ -2507,7 +2507,7 @@ NEXT STEP
 # 100. Example User-Facing Response
 
 ```text
-M204 is showing elevated bearing-failure risk.
+M21 is showing elevated bearing-failure risk.
 
 Risk:
 87%
@@ -3279,7 +3279,7 @@ quality impact
 The primary product demonstration should use this exact sequence:
 
 ```text
-1. M204 operates normally.
+1. M21 operates normally.
 
 2. Synthetic telemetry begins drifting.
 
@@ -3564,4 +3564,4 @@ Prove it worked.
 Learn from it.
 ```
 
-That is the core agent workflow of the Factory Reliability Command Center.
+That is the core agent workflow of the DeRule Command Center.

@@ -304,7 +304,7 @@ def render_approval_panel(
                 </div>
                 <div style="margin-top: 10px; padding: 10px; background: rgba(34, 197, 94, 0.08); border: 1px solid #16a34a; border-radius: 6px;">
                     <div style="font-weight: 700; color: #16a34a; font-size: 12px; letter-spacing: 0.03em;">
-                        APPROVED — READY FOR SEPARATE GOVERNED EXECUTION
+                        APPROVED - READY FOR SEPARATE GOVERNED EXECUTION
                     </div>
                     <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">
                         Action execution is a separate governed step. Operational dispatch requires independent execution authorization.

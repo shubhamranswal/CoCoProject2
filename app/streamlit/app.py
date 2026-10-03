@@ -1,4 +1,4 @@
-"""Factory Reliability Command Center — Streamlit Production Application.
+"""Factory Reliability Command Center - Streamlit Production Application.
 
 Follows AGENT.md & architecture/architecture.md:
 - Fully deterministic presentation shell connecting to governed backend services
@@ -42,7 +42,7 @@ from app.streamlit.views import (
     render_work_orders_view,
 )
 from domain.enums import AlertStatus
-from domain.exceptions import RepositoryUnavailableError
+from domain.exceptions import RepositoryUnavailableError, UnsupportedOperationError
 
 def main() -> None:
     # 1. Page Configuration (DeRule Favicon and Title)
@@ -102,11 +102,14 @@ def main() -> None:
 
     def handle_reset_demo() -> None:
         if facade:
-            facade.reset_demo(seed_degradation=False)
-            st.session_state.scenario_stage = "HEALTHY"
-            st.session_state.selected_investigation_id = None
-            st.session_state.selected_work_order_id = None
-            navigate_to("Command Center", machine_id="M204")
+            try:
+                facade.reset_demo(seed_degradation=False)
+                st.session_state.scenario_stage = "HEALTHY"
+                st.session_state.selected_investigation_id = None
+                st.session_state.selected_work_order_id = None
+                navigate_to("Command Center", machine_id="M204")
+            except UnsupportedOperationError as e:
+                st.warning(str(e))
 
     # 6. Sidebar Navigation & Demo Controls
     render_sidebar(
@@ -203,7 +206,7 @@ def main() -> None:
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 30px 0 12px 0;'/>", unsafe_allow_html=True)
     col_foot_left, col_foot_right = st.columns([2, 1])
     with col_foot_left:
-        st.caption("DeRule — Enterprise Factory Reliability Command Center | Detect. Investigate. Act")
+        st.caption("DeRule - Enterprise Factory Reliability Command Center | Detect. Investigate. Act")
     with col_foot_right:
         backend_label = "Snowflake Cloud Gov" if st.session_state.backend_mode == "snowflake" else "In-Memory Seeded Store"
         st.caption(f"Status: **ONLINE** | Backend: `{backend_label}` | Version: `v1.2.0`")
@@ -211,4 +214,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

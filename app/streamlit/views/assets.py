@@ -38,7 +38,7 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
             "Select Asset:",
             mach_ids,
             index=mach_ids.index(cur_mach_id) if cur_mach_id in mach_ids else 0,
-            format_func=lambda x: f"{x} — {facade.repo.get_machine(x).name if facade.repo.get_machine(x) else x}",
+            format_func=lambda x: f"{x} - {facade.repo.get_machine(x).name if facade.repo.get_machine(x) else x}",
             key="asset_machine_dropdown",
         )
         if chosen_id != cur_mach_id:
@@ -72,7 +72,7 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
                     <span class="badge badge-neutral" style="margin-left: 6px;">{mach.line_id}</span>
                     <span class="badge badge-info" style="margin-left: 6px;">STATE: {mach.state.value}</span>
                     <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
-                        {mach.machine_id} — {mach.name}
+                        {mach.machine_id} - {mach.name}
                     </div>
                     <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
                         Model: <b>{mach.model}</b> &nbsp;|&nbsp; Manufacturer: <b>{mach.manufacturer}</b> &nbsp;|&nbsp; Serial: <code>{mach.serial_number}</code>
@@ -118,14 +118,14 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
             st.markdown("<b>Subassembly Components:</b>", unsafe_allow_html=True)
             for c in detail["components"]:
                 st.markdown(
-                    f"- <b>{c.name}</b> (<code>{c.component_id}</code>) — Type: <code>{c.component_type}</code> | Health: <code>{c.health_status.value}</code>",
+                    f"- <b>{c.name}</b> (<code>{c.component_id}</code>) - Type: <code>{c.component_type}</code> | Health: <code>{c.health_status.value}</code>",
                     unsafe_allow_html=True,
                 )
         with col_s:
             st.markdown("<b>Calibrated Sensors:</b>", unsafe_allow_html=True)
             for s in detail["sensors"]:
                 st.markdown(
-                    f"- <b>{s.name}</b> (<code>{s.sensor_id}</code>) — Type: <code>{s.sensor_type.value}</code> | Unit: <code>{s.unit}</code> | Sample Rate: {s.sampling_rate_hz}Hz",
+                    f"- <b>{s.name}</b> (<code>{s.sensor_id}</code>) - Type: <code>{s.sensor_type.value}</code> | Unit: <code>{s.unit}</code> | Sample Rate: {s.sampling_rate_hz}Hz",
                     unsafe_allow_html=True,
                 )
 
@@ -134,7 +134,7 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
         if detail["maintenance"]:
             for m in detail["maintenance"]:
                 st.markdown(
-                    f"- <b>{m.performed_at.strftime('%Y-%m-%d')}</b>: {m.maintenance_type} by <b>{m.technician_name}</b> ({m.duration_hours}h) — {m.notes}",
+                    f"- <b>{m.performed_at.strftime('%Y-%m-%d')}</b>: {m.maintenance_type} by <b>{m.technician_name}</b> ({m.duration_hours}h) - {m.notes}",
                     unsafe_allow_html=True,
                 )
         else:
@@ -144,7 +144,7 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
         if detail["failures"]:
             for f in detail["failures"]:
                 st.markdown(
-                    f"- <b>{f.occurred_at.strftime('%Y-%m-%d')}</b>: {f.failure_mode.value} — Cause: {f.root_cause} (Downtime: {f.downtime_hours}h)",
+                    f"- <b>{f.occurred_at.strftime('%Y-%m-%d')}</b>: {f.failure_mode.value} - Cause: {f.root_cause} (Downtime: {f.downtime_hours}h)",
                     unsafe_allow_html=True,
                 )
         else:

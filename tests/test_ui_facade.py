@@ -289,3 +289,79 @@ def test_streamlit_app_snowflake_unavailable_guardrail(monkeypatch) -> None:
     assert any("STORAGE BACKEND UNAVAILABLE" in m.value for m in at.markdown)
 
 
+def test_in_memory_backend_reset_demo_success(facade: CommandCenterFacade) -> None:
+    """Verify InMemoryRepository reset_demo/reset_state continues to work as intended."""
+    facade.reset_demo(seed_degradation=True)
+    alerts = facade.repo.list_alerts(machine_id="M204", status=AlertStatus.OPEN)
+    assert len(alerts) >= 1
+
+
+def test_snowflake_backend_reset_demo_rejected_with_unsupported_operation() -> None:
+    """Verify Snowflake backend reset_demo is rejected safely with UnsupportedOperationError and no SQL mutations."""
+    from domain.exceptions import UnsupportedOperationError
+    from repositories.snowflake.snowflake_repository import SnowflakeRepository
+    from unittest.mock import MagicMock
+
+    # 1. Verify SnowflakeRepository does not define reset_state
+    assert not hasattr(SnowflakeRepository, "reset_state")
+
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_conn.cursor.return_value = mock_cur
+    mock_mgr = MagicMock()
+    mock_mgr.get_connection.return_value = mock_conn
+
+    sf_repo = SnowflakeRepository(connection_manager=mock_mgr)
+    assert not hasattr(sf_repo, "reset_state")
+
+    # 2. Instantiate facade with Snowflake backend
+    sf_facade = CommandCenterFacade(backend_mode="snowflake", repo=sf_repo)
+    assert sf_facade.backend_mode == "snowflake"
+    assert sf_facade.repo is sf_repo
+
+    # 3. Calling reset_demo must raise UnsupportedOperationError
+    with pytest.raises(UnsupportedOperationError) as exc_info:
+        sf_facade.reset_demo()
+
+    assert "unsupported for the snowflake backend" in str(exc_info.value).lower()
+
+    # 4. Confirm no mutation SQL was ever executed on the cursor
+    for call_item in mock_cur.execute.call_args_list:
+        sql = call_item[0][0].upper()
+        assert not any(kw in sql for kw in ["DELETE", "TRUNCATE", "UPDATE", "INSERT", "DROP", "ALTER"])
+
+
+def test_sidebar_reset_demo_disabled_when_backend_is_snowflake() -> None:
+    """Verify render_sidebar disables Reset Demo button when backend_mode == 'snowflake'."""
+    from app.streamlit.components.sidebar import render_sidebar
+    from unittest.mock import MagicMock, patch
+
+    mock_reset_cb = MagicMock()
+    mock_degrad_cb = MagicMock()
+    mock_inv_cb = MagicMock()
+    mock_change_cb = MagicMock()
+
+    button_calls = []
+
+    def fake_button(label, **kwargs):
+        button_calls.append((label, kwargs))
+        return False
+
+    with patch("streamlit.sidebar"), \
+         patch("streamlit.selectbox", return_value="snowflake"), \
+         patch("streamlit.image"), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.button", side_effect=fake_button):
+        render_sidebar(
+            backend_mode="snowflake",
+            on_backend_change=mock_change_cb,
+            on_run_degradation=mock_degrad_cb,
+            on_run_investigation=mock_inv_cb,
+            on_reset_demo=mock_reset_cb,
+        )
+
+    # Find the Reset button call and ensure disabled is True
+    reset_button = next((b for b in button_calls if "Reset" in b[0]), None)
+    assert reset_button is not None
+    assert reset_button[1].get("disabled") is True

@@ -36,7 +36,7 @@ def render_work_order_card(
                     <span class="badge badge-warning" style="margin-left: 6px;">PRIORITY: {work_order.priority.value}</span>
                     <span class="badge badge-neutral" style="margin-left: 6px;">STATUS: {work_order.status.value}</span>
                     <div style="font-size: 17px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
-                        {work_order.work_order_id} — {work_order.title}
+                        {work_order.work_order_id} - {work_order.title}
                     </div>
                     <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
                         Machine: <b>{work_order.machine_id}</b> &nbsp;|&nbsp; Component: <b>{work_order.component_id}</b> &nbsp;|&nbsp; Assigned: <b>{work_order.assigned_to}</b>
@@ -98,7 +98,7 @@ def render_work_order_card(
             f"""
             <div class="ind-card-warning">
                 <div style="font-size: 13px; font-weight: 700; color: #d97706;">
-                    Physical Work Completed — Pending Telemetry Verification
+                    Physical Work Completed - Pending Telemetry Verification
                 </div>
                 <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">
                     Work order is marked <b>COMPLETED</b> by technician. Final <b>VERIFIED</b> status requires post-restart sensor verification.

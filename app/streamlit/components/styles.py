@@ -109,7 +109,7 @@ def apply_industrial_theme(theme_mode: str = "light") -> None:
         }
         """
     else:
-        # Light Mode Palette (Default — Professional Industrial White/Slate)
+        # Light Mode Palette (Default - Professional Industrial White/Slate)
         vars_css = """
         :root {
             --bg-app: #f8fafc;

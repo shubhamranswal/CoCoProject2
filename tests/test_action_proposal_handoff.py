@@ -412,7 +412,7 @@ def test_gate_6_human_operator_rejection_lifecycle() -> None:
 
 
 # =============================================================================
-# GATE 7 & 11: HARD SAFETY GATE — ZERO PHYSICAL EXECUTION CALLS
+# GATE 7 & 11: HARD SAFETY GATE - ZERO PHYSICAL EXECUTION CALLS
 # =============================================================================
 
 def test_gate_7_no_physical_execution_during_proposal_or_approval() -> None:
@@ -500,7 +500,7 @@ def test_gate_6_and_12_approved_state_rendering_language_and_zero_execution_butt
     full_text = " ".join(rendered_html)
 
     # Language verification
-    assert "APPROVED — READY FOR SEPARATE GOVERNED EXECUTION" in full_text
+    assert "APPROVED - READY FOR SEPARATE GOVERNED EXECUTION" in full_text
     assert "Action execution is a separate governed step" in full_text
     assert "ACTION AUTHORIZED" in full_text
     assert "operator.shubham" in full_text

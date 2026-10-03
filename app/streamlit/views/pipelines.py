@@ -116,13 +116,13 @@ def render_pipelines_view(facade: CommandCenterFacade) -> None:
             <div class="ind-card">
                 <div style="font-size: 13px; font-weight: 700; color: var(--primary-accent); margin-bottom: 8px;">Mapped Snowflake Schemas & DDL</div>
                 <ul style="font-size: 12px; color: var(--text-secondary); line-height: 1.6; padding-left: 18px; margin: 0;">
-                    <li><code>RAW_TELEMETRY.SENSOR_MEASUREMENTS</code> — Append-only timeseries stream</li>
-                    <li><code>FEATURES.MACHINE_FEATURES_10M</code> — Aggregated RMS, peak, skewness, temps</li>
-                    <li><code>ANALYTICS.ANOMALIES</code> — Z-score and dual-signal anomaly records</li>
-                    <li><code>ANALYTICS.FAILURE_RISK_SCORES</code> — Additive multi-factor risk scores</li>
-                    <li><code>OPERATIONS.OEE_HOURLY</code> — Availability, performance, quality rollup</li>
-                    <li><code>GOVERNANCE.APPROVALS</code> — Cryptographically signed human authorizations</li>
-                    <li><code>MAINTENANCE.WORK_ORDERS</code> — CMMS synchronized action orders</li>
+                    <li><code>RAW_TELEMETRY.SENSOR_MEASUREMENTS</code> - Append-only timeseries stream</li>
+                    <li><code>FEATURES.MACHINE_FEATURES_10M</code> - Aggregated RMS, peak, skewness, temps</li>
+                    <li><code>ANALYTICS.ANOMALIES</code> - Z-score and dual-signal anomaly records</li>
+                    <li><code>ANALYTICS.FAILURE_RISK_SCORES</code> - Additive multi-factor risk scores</li>
+                    <li><code>OPERATIONS.OEE_HOURLY</code> - Availability, performance, quality rollup</li>
+                    <li><code>GOVERNANCE.APPROVALS</code> - Cryptographically signed human authorizations</li>
+                    <li><code>MAINTENANCE.WORK_ORDERS</code> - CMMS synchronized action orders</li>
                 </ul>
             </div>
             """,
