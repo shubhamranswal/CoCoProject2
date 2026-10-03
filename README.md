@@ -1,2397 +1,680 @@
-# Factory Reliability Command Center
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="logo/dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="logo/light.png">
+    <img alt="DeRule Logo" src="logo/dark.png" width="280">
+  </picture>
+</p>
+
+<h1 align="center">DeRule</h1>
+
+<p align="center">
+  <strong>Detect. Investigate. Act.</strong>
+</p>
 
-## Autonomous Reliability Intelligence for Industrial Operations
+<p align="center">
+  An AI-powered industrial reliability and operations command center built natively around Snowflake. DeRule transforms high-frequency machine telemetry, production schedules, maintenance history, and engineering knowledge into evidence-grounded investigations, advisory recommendations, and governed, human-authorized operational actions.
+</p>
+
+<p align="center">
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white" alt="Python 3.11+"></a>
+  <a href="https://streamlit.io/"><img src="https://img.shields.io/badge/Streamlit-1.30%2B-red?logo=streamlit&logoColor=white" alt="Streamlit"></a>
+  <a href="https://www.snowflake.com/"><img src="https://img.shields.io/badge/Snowflake-COCO__FACTORY-29B5E8?logo=snowflake&logoColor=white" alt="Snowflake"></a>
+  <a href="https://scikit-learn.org/"><img src="https://img.shields.io/badge/scikit--learn-HistGradientBoosting-F7931E?logo=scikit-learn&logoColor=white" alt="scikit-learn"></a>
+  <a href="https://docs.pytest.org/"><img src="https://img.shields.io/badge/pytest-Passing%20(434%20tests)-brightgreen?logo=pytest&logoColor=white" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Status-Production--Ready%20Core-success" alt="Status">
+</p>
 
-**Factory Reliability Command Center** is an industrial AI platform that unifies machine telemetry, production data, maintenance history, quality events, engineering documentation, and enterprise systems into a single reliability intelligence layer.
-
-The platform continuously monitors equipment health, detects abnormal operating conditions, predicts potential failures, investigates root causes using structured and unstructured evidence, recommends corrective actions, and orchestrates maintenance workflows.
-
-It is designed around a simple operational loop:
-
-```text
-OBSERVE → DETECT → PREDICT → INVESTIGATE → DECIDE → ACT → VERIFY → LEARN
-```
-
-The platform uses **Snowflake as its governed industrial data and intelligence foundation**, **agentic AI for investigation and decision workflows**, and **Streamlit as the initial operational command-center interface**.
-
-**CoCo is the AI-native engineering environment used to develop, operate, test, and evolve the platform.**
-
----
-
-# 1. Product Vision
-
-Industrial organizations have no shortage of data.
-
-They have:
-
-* vibration sensors
-* temperature sensors
-* RPM
-* pressure
-* current
-* PLC signals
-* production counters
-* quality measurements
-* maintenance records
-* spare-parts information
-* work orders
-* machine manuals
-* engineering documents
-* operator observations
-* production schedules
-
-The problem is that these signals rarely form one operational picture.
-
-A machine can begin degrading at 10:14 AM while:
-
-* its telemetry is stored in an OT system,
-* its maintenance history is in a CMMS,
-* its production context is in an ERP,
-* its manual is a PDF,
-* and its impact on OEE is only visible later.
-
-The Factory Reliability Command Center brings those pieces together.
-
-The product transforms raw operational signals into a continuously updated understanding of:
-
-> **What is happening, what is likely to happen, why it is happening, what should be done, and whether the action worked.**
-
----
-
-# 2. Product Scope
-
-The platform initially focuses on **asset reliability and operational performance**.
-
-The core product capabilities are:
-
-### Asset Intelligence
-
-Understand the current and historical condition of every machine.
-
-### Predictive Maintenance
-
-Identify patterns associated with degradation and potential failure.
-
-### Reliability Investigation
-
-Automatically investigate anomalies using all relevant operational context.
-
-### Root Cause Analysis
-
-Connect sensor behavior, maintenance history, production conditions, quality events, and documentation.
-
-### Maintenance Decision Support
-
-Recommend specific actions based on evidence.
-
-### Work Management
-
-Convert recommendations into structured maintenance work orders.
-
-### OEE Intelligence
-
-Connect machine health to Availability, Performance, Quality, and OEE.
-
-### Operational Command Center
-
-Give operators, reliability engineers, maintenance teams, and plant leadership a common operating view.
-
-### Continuous Learning
-
-Capture outcomes from investigations and maintenance actions so that the reliability system becomes progressively better.
-
----
-
-# 3. Product Philosophy
-
-The platform follows several principles.
-
-## Data is the foundation
-
-AI should reason over governed operational data, not isolated prompts.
-
-## Deterministic logic where possible
-
-Use SQL, statistical methods, rules, and ML for things that can be reliably computed.
-
-Use agents where reasoning, investigation, interpretation, and orchestration are required.
-
-## Evidence before action
-
-The system must be able to explain why an alert or recommendation exists.
-
-## Agents do work, not just conversation
-
-The agent should be able to retrieve information, call tools, create actions, and verify outcomes.
-
-## Humans remain accountable for consequential decisions
-
-The platform supports operators and engineers rather than silently taking high-impact industrial actions.
-
-## Every action should be traceable
-
-The system should answer:
-
-```text
-What happened?
-What did the system know?
-What did the agent investigate?
-What evidence did it use?
-What did it recommend?
-Who approved it?
-What action was taken?
-What happened afterward?
-```
-
-## Architecture should scale beyond one plant
-
-The first deployment may contain synthetic or limited data.
-
-The architecture should still support:
-
-```text
-Plant 1
-Plant 2
-Plant 3
-...
-Plant N
-```
-
-without redesigning the core platform.
-
----
-
-# 4. Product Architecture
-
-```text
-                         INDUSTRIAL ENVIRONMENT
-                                  │
-        ┌─────────────────────────┼──────────────────────────┐
-        │                         │                          │
-        ▼                         ▼                          ▼
-   OT / Sensors              Enterprise                  Documents
-        │                       Systems                       │
-        │                 ┌─────┼──────┐                     │
-        │                 │     │      │                     │
-   Telemetry             ERP   CMMS   Quality              Manuals
-        │                 │     │      │                  Procedures
-        └─────────────────┴─────┴──────┴──────────────────────┘
-                                  │
-                                  ▼
-                         ┌───────────────────┐
-                         │     SNOWFLAKE     │
-                         │                   │
-                         │ Industrial Data  │
-                         │ Data Engineering  │
-                         │ Analytics         │
-                         │ ML                │
-                         │ Search            │
-                         │ Semantic Layer    │
-                         │ AI                │
-                         └─────────┬─────────┘
-                                   │
-                                   ▼
-                         ┌───────────────────┐
-                         │ INTELLIGENCE LAYER│
-                         │                   │
-                         │ Anomaly Detection │
-                         │ Failure Prediction│
-                         │ OEE Analytics     │
-                         │ Event Correlation │
-                         │ Semantic Context  │
-                         └─────────┬─────────┘
-                                   │
-                                   ▼
-                         ┌───────────────────┐
-                         │  AGENT PLATFORM   │
-                         │                   │
-                         │ Reliability       │
-                         │ Quality           │
-                         │ OEE               │
-                         │ Investigation     │
-                         │ Orchestration     │
-                         └─────────┬─────────┘
-                                   │
-                         ┌─────────┴─────────┐
-                         │                   │
-                         ▼                   ▼
-                    READ TOOLS          ACTION TOOLS
-                         │                   │
-                         │             ┌─────┼─────┐
-                         │             │     │     │
-                         ▼             ▼     ▼     ▼
-                    Snowflake        CMMS  ERP   Other
-                                      │
-                                      ▼
-                               WORK MANAGEMENT
-                                      │
-                                      ▼
-                             OPERATIONAL OUTCOME
-                                      │
-                                      ▼
-                                OEE / RELIABILITY
-                                      │
-                                      └──────────────┐
-                                                     │
-                                                     ▼
-                                               LEARNING LOOP
-```
-
----
-
-# 5. Core Product Components
-
-The platform is composed of seven major layers.
-
-```text
-1. Industrial Data Layer
-2. Operational Intelligence Layer
-3. Predictive Intelligence Layer
-4. Agentic Reliability Layer
-5. Action / Integration Layer
-6. Command Center
-7. Governance & Observability
-```
-
----
-
-# 6. Industrial Data Layer
-
-The Industrial Data Layer creates a unified representation of factory operations.
-
-It ingests data from:
-
-* machine sensors
-* PLC/SCADA systems
-* historians
-* MES
-* ERP
-* CMMS/EAM
-* quality systems
-* laboratory systems
-* engineering systems
-* documents
-* external services
-
-The architecture should support both batch and near-real-time data.
-
----
-
-# 7. Data Architecture
-
-Snowflake is the central governed data platform.
-
-A logical architecture is:
-
-```text
-RAW
- │
- ▼
-STANDARDIZED
- │
- ▼
-CURATED
- │
- ▼
-SEMANTIC
- │
- ▼
-ANALYTICS
- │
- ▼
-INTELLIGENCE
- │
- ▼
-APPLICATION
-```
-
-## RAW
-
-Source-aligned data.
-
-Examples:
-
-```text
-RAW_OT_TELEMETRY
-RAW_MAINTENANCE
-RAW_PRODUCTION
-RAW_QUALITY
-RAW_ERP
-RAW_DOCUMENTS
-```
-
-## STANDARDIZED
-
-Normalizes:
-
-* timestamps
-* units
-* identifiers
-* plant hierarchy
-* machine identifiers
-* sensor identifiers
-* source-specific schemas
-
-## CURATED
-
-Creates canonical business entities.
-
-## SEMANTIC
-
-Provides business meaning and governed access.
-
-## ANALYTICS
-
-Provides OEE, reliability, production and quality metrics.
-
-## INTELLIGENCE
-
-Contains:
-
-* features
-* anomaly scores
-* failure probabilities
-* alerts
-* investigations
-* recommendations
-
----
-
-# 8. Canonical Industrial Model
-
-The product uses a common operational model.
-
-```text
-Enterprise
-    │
-    └── Plant
-          │
-          └── Production Area
-                │
-                └── Production Line
-                      │
-                      └── Machine
-                            │
-                            ├── Component
-                            │
-                            ├── Sensor
-                            │
-                            ├── Production Events
-                            │
-                            ├── Quality Events
-                            │
-                            ├── Maintenance Events
-                            │
-                            ├── Failures
-                            │
-                            └── Work Orders
-```
-
-This model is critical because the platform must reason across systems.
-
-For example:
-
-```text
-Sensor
-  ↓
-Machine
-  ↓
-Production Line
-  ↓
-Production Order
-  ↓
-Quality Event
-```
-
-and:
-
-```text
-Machine
-  ↓
-Component
-  ↓
-Maintenance History
-  ↓
-Failure History
-  ↓
-Work Order
-```
-
----
-
-# 9. Core Entities
-
-The initial canonical model includes:
-
-* Enterprise
-* Plant
-* Area
-* Production Line
-* Machine
-* Machine Component
-* Sensor
-* Sensor Measurement
-* Production Order
-* Production Run
-* Maintenance Event
-* Failure Event
-* Quality Event
-* Maintenance Strategy
-* Machine Manual
-* Work Order
-* Alert
-* Investigation
-* Recommendation
-* Agent Execution
-* OEE Measurement
-
-Additional entities can be introduced without changing the core architecture.
-
----
-
-# 10. Asset Model
-
-Every machine is represented as an operational asset.
-
-Example:
-
-```text
-Machine
-├── Identity
-├── Location
-├── Production Line
-├── Manufacturer
-├── Model
-├── Criticality
-├── Operating Limits
-├── Components
-├── Sensors
-├── Maintenance History
-├── Failure History
-├── Production History
-├── Quality History
-└── Documents
-```
-
-This becomes the context boundary for machine-level intelligence.
-
----
-
-# 11. Real-Time and Near-Real-Time Processing
-
-The platform should support multiple processing modes.
-
-### Streaming / near-real-time
-
-Used for:
-
-* machine telemetry
-* anomaly detection
-* active alerts
-* operational dashboards
-
-### Micro-batch
-
-Used for:
-
-* maintenance updates
-* production records
-* quality events
-
-### Batch
-
-Used for:
-
-* historical model training
-* periodic feature computation
-* long-term analytics
-
-The architecture should not assume that every system needs millisecond-level streaming.
-
-Processing frequency should be determined by operational requirements.
-
----
-
-# 12. Reliability Intelligence
-
-Reliability intelligence sits between raw telemetry and agentic reasoning.
-
-```text
-Telemetry
-   ↓
-Signal Processing
-   ↓
-Feature Engineering
-   ↓
-Baseline Modeling
-   ↓
-Anomaly Detection
-   ↓
-Failure Risk
-   ↓
-Event Correlation
-   ↓
-Reliability Alert
-```
-
-The system should distinguish:
-
-### Anomaly
-
-Something unusual is happening.
-
-### Degradation
-
-The machine is moving away from its healthy operating profile.
-
-### Failure Risk
-
-The observed pattern is associated with an increased probability of a known failure mode.
-
-### Failure
-
-A confirmed operational failure has occurred.
-
-These are not interchangeable states.
-
----
-
-# 13. Machine Health Model
-
-Each asset receives a continuously updated health state.
-
-Example:
-
-```text
-Machine M204
-
-Health State:
-DEGRADING
-
-Failure Risk:
-87%
-
-Primary Failure Mode:
-Bearing Assembly
-
-Confidence:
-HIGH
-
-Signals:
-- Vibration deviation
-- Temperature trend
-- RPM instability
-- Historical pattern match
-
-Last Maintenance:
-47 days ago
-
-Production Criticality:
-HIGH
-```
-
-The health model should retain history rather than only the latest score.
-
----
-
-# 14. Predictive Maintenance
-
-Predictive maintenance combines multiple sources of evidence.
-
-```text
-                 MACHINE HEALTH
-                       │
-       ┌───────────────┼────────────────┐
-       │               │                │
-       ▼               ▼                ▼
-   Telemetry       Maintenance      Historical
-     Signals         History          Failures
-       │               │                │
-       └───────────────┼────────────────┘
-                       │
-                       ▼
-                 Feature Layer
-                       │
-                       ▼
-               Predictive Model
-                       │
-                       ▼
-                 Failure Risk
-```
-
-Potential model inputs include:
-
-* vibration statistics
-* vibration frequency-domain features
-* temperature trend
-* RPM variance
-* pressure deviation
-* electrical current
-* power consumption
-* operating regime
-* machine age
-* maintenance recency
-* component age
-* previous failure modes
-
----
-
-# 15. Model Strategy
-
-The platform should support multiple analytical approaches.
-
-### Rules
-
-Useful for:
-
-* hard operational limits
-* safety thresholds
-* deterministic conditions
-
-### Statistical Detection
-
-Useful for:
-
-* baseline deviations
-* trend changes
-* distribution shifts
-
-### Machine Learning
-
-Useful for:
-
-* failure classification
-* remaining useful life
-* anomaly detection
-* pattern recognition
-
-### Agentic Reasoning
-
-Useful for:
-
-* investigation
-* evidence synthesis
-* natural-language explanation
-* cross-system reasoning
-* action planning
-
-The product does not force every problem into an LLM.
-
-That would be an expensive way to reinvent `WHERE`.
-
----
-
-# 16. OEE Intelligence
-
-The platform treats OEE as an operational outcome rather than an isolated KPI.
-
-```text
-                 OEE
-                  │
-       ┌──────────┼──────────┐
-       ▼          ▼          ▼
- Availability Performance Quality
-       │          │          │
-       ▼          ▼          ▼
-   Downtime    Slow cycles  Defects
-       │          │          │
-       └──────────┼──────────┘
-                  ▼
-             Root Causes
-```
-
-The platform should answer questions such as:
-
-* Why did OEE decline?
-* Which machine contributed most?
-* Which failure caused the downtime?
-* Which production line is deteriorating?
-* Which recurring maintenance issue is affecting performance?
-* Which quality issue is associated with a machine condition?
-
----
-
-# 17. Agentic Intelligence Layer
-
-Agents are responsible for tasks that require investigation, reasoning, and orchestration.
-
-The platform is not built as a single general-purpose agent.
-
-Instead, it uses specialized capabilities.
-
-```text
-                    ORCHESTRATOR
-                         │
-          ┌──────────────┼──────────────┐
-          ▼              ▼              ▼
-     Reliability      Quality          OEE
-       Agent           Agent          Agent
-          │              │              │
-          └──────────────┼──────────────┘
-                         ▼
-                   Shared Tools
-```
-
-This allows each agent to have:
-
-* specific responsibilities
-* specific tools
-* specific context
-* specific guardrails
-* specific evaluation criteria
-
----
-
-# 18. Reliability Agent
-
-The Reliability Agent investigates machine-health events.
-
-Its responsibility is not simply to answer:
-
-> "What is wrong with M204?"
-
-Its workflow is:
-
-```text
-Alert
- ↓
-Understand machine context
- ↓
-Inspect recent telemetry
- ↓
-Compare with baseline
- ↓
-Inspect maintenance history
- ↓
-Inspect failure history
- ↓
-Inspect production context
- ↓
-Search engineering documentation
- ↓
-Generate hypotheses
- ↓
-Evaluate evidence
- ↓
-Determine likely failure mode
- ↓
-Estimate operational impact
- ↓
-Recommend action
- ↓
-Request/execute authorized action
- ↓
-Verify outcome
-```
-
----
-
-# 19. Agent Tools
-
-Agents interact with the platform through explicit tools.
-
-### Read tools
-
-```text
-get_machine()
-get_machine_health()
-get_sensor_history()
-get_sensor_baseline()
-get_maintenance_history()
-get_failure_history()
-get_production_context()
-get_quality_context()
-get_oee_impact()
-search_machine_manual()
-search_failure_patterns()
-```
-
-### Analysis tools
-
-```text
-calculate_oee_impact()
-compare_with_historical_failure()
-calculate_operating_deviation()
-evaluate_failure_signature()
-```
-
-### Action tools
-
-```text
-generate_maintenance_checklist()
-create_work_order()
-update_work_order()
-assign_work_order()
-record_investigation()
-```
-
-Tools should have well-defined schemas, authorization rules, logging, and failure handling.
-
----
-
-# 20. Agent Memory and State
-
-Agent executions should be stateful at the workflow level.
-
-An investigation should have:
-
-```text
-Investigation ID
-Machine
-Trigger
-Start Time
-Status
-Evidence
-Hypotheses
-Reasoning Summary
-Recommendation
-Approval
-Action
-Outcome
-```
-
-The platform should distinguish:
-
-### Operational state
-
-Current machine condition.
-
-### Investigation state
-
-Current reasoning workflow.
-
-### Historical state
-
-Previous incidents and outcomes.
-
-### Organizational knowledge
-
-Engineering procedures, manuals, policies, and maintenance standards.
-
----
-
-# 21. Evidence Model
-
-Every significant recommendation should have an evidence trail.
-
-Example:
-
-```text
-Recommendation:
-Inspect bearing assembly.
-
-Evidence:
-
-E1:
-Vibration increased 42% above baseline.
-
-E2:
-Temperature increased continuously over the previous 8 hours.
-
-E3:
-Historical failure F-1842 exhibited a similar signal pattern.
-
-E4:
-The same component was previously replaced after a similar anomaly.
-
-E5:
-Manufacturer documentation recommends inspection under these conditions.
-```
-
-This evidence model is important for trust, debugging, and future model evaluation.
-
----
-
-# 22. Decision and Action Framework
-
-Not every agent output should automatically become an action.
-
-The platform uses an action policy.
-
-```text
-                 AGENT RECOMMENDATION
-                         │
-                         ▼
-                 Confidence Check
-                         │
-              ┌──────────┴──────────┐
-              │                     │
-            LOW                   HIGH
-              │                     │
-              ▼                     ▼
-       Human Review          Action Policy
-                                    │
-                          ┌─────────┴─────────┐
-                          ▼                   ▼
-                     Auto-permitted       Approval
-                          │                   │
-                          ▼                   ▼
-                       Execute             Execute
-```
-
-The exact policy is configurable by organization, plant, asset criticality, and action type.
-
----
-
-# 23. Work Management
-
-The platform should integrate with existing maintenance systems rather than attempt to replace them.
-
-The internal work-order abstraction is:
-
-```text
-Work Order
-├── Asset
-├── Trigger
-├── Problem
-├── Failure Mode
-├── Priority
-├── Recommendation
-├── Checklist
-├── Required Parts
-├── Assigned Technician
-├── Status
-├── Approval
-├── Execution
-└── Outcome
-```
-
-External integrations can map this abstraction to:
-
-* CMMS
-* EAM
-* ERP
-* ticketing platforms
-* service-management systems
-
----
-
-# 24. MCP Integration
-
-External operational systems can be exposed through MCP where appropriate.
-
-Example:
-
-```text
-                    Agent
-                      │
-                      ▼
-                     MCP
-          ┌───────────┼───────────┐
-          ▼           ▼           ▼
-         CMMS        ERP         Slack
-```
-
-This enables the agent to move from:
-
-```text
-Read-only intelligence
-```
-
-to:
-
-```text
-Cross-system operational execution
-```
-
-MCP integrations should follow strict permission and audit policies.
-
----
-
-# 25. Command Center
-
-The Command Center is the operational interface for the platform.
-
-The initial implementation uses Streamlit.
-
-The UI is designed around operator workflows rather than around database tables.
-
----
-
-# 26. Command Center Views
-
-## Factory Overview
-
-Provides:
-
-* current OEE
-* OEE trend
-* plant health
-* active alerts
-* high-risk machines
-* downtime
-* production status
-* quality status
-
----
-
-## Asset Health
-
-Displays:
-
-* machine state
-* health score
-* failure risk
-* active anomalies
-* sensor trends
-* maintenance history
-* recent production context
-
----
-
-## Reliability Inbox
-
-A prioritized list of machine-health events.
-
-Example:
-
-```text
-M204
-Bearing Risk
-87%
-HIGH
-
-M118
-Temperature Anomaly
-71%
-MEDIUM
-
-M033
-Vibration Drift
-64%
-MEDIUM
-```
-
----
-
-## Investigation Workspace
-
-Provides:
-
-```text
-Machine
-  ↓
-Timeline
-  ↓
-Signals
-  ↓
-Historical Context
-  ↓
-Agent Investigation
-  ↓
-Evidence
-  ↓
-Recommendation
-  ↓
-Action
-```
-
----
-
-## Work Management
-
-Displays:
-
-* open work orders
-* priority
-* technician
-* SLA
-* status
-* completion
-* overdue work
-* resulting machine condition
-
----
-
-## OEE Intelligence
-
-Allows users to move from:
-
-```text
-OEE
- ↓
-Availability
- ↓
-Downtime
- ↓
-Machine
- ↓
-Failure
- ↓
-Maintenance
-```
-
----
-
-# 27. Stitch and UI Design
-
-Stitch is used as the visual design and interaction-design environment.
-
-It defines:
-
-* information hierarchy
-* layouts
-* navigation
-* interaction patterns
-* component concepts
-* visual language
-
-Streamlit implements the operational application.
-
-The relationship is:
-
-```text
-Stitch
-  ↓
-Design System
-  ↓
-Component Specification
-  ↓
-Streamlit Components
-  ↓
-Application Services
-  ↓
-Snowflake / Agents
-```
-
-The product should maintain a consistent design system rather than treating every dashboard page as an independent design.
-
----
-
-# 28. Application Architecture
-
-The Streamlit application should not contain business logic directly.
-
-Preferred architecture:
-
-```text
-                    STREAMLIT
-                        │
-                        ▼
-                 APPLICATION API
-                        │
-              ┌─────────┼─────────┐
-              ▼         ▼         ▼
-           Queries    Agents    Actions
-              │         │         │
-              └─────────┼─────────┘
-                        ▼
-                    SNOWFLAKE
-```
-
-This allows the UI to evolve independently from the intelligence layer.
-
----
-
-# 29. Application Services
-
-Suggested services:
-
-```text
-AssetService
-TelemetryService
-ReliabilityService
-OEEService
-AlertService
-InvestigationService
-WorkOrderService
-DocumentService
-AgentService
-```
-
-The application should interact with these services rather than embedding raw SQL throughout the UI.
-
----
-
-# 30. CoCo as the Engineering Layer
-
-CoCo is part of the development architecture.
-
-The intended workflow is:
-
-```text
-Developer
-   ↓
-CoCo
-   ↓
-Repository
-   ↓
-Snowflake
-   ↓
-Agents
-   ↓
-Tests
-   ↓
-Deployment
-```
-
-CoCo can be used to:
-
-* inspect the repository
-* understand architecture
-* write SQL
-* create Python
-* modify application code
-* create tests
-* execute commands
-* debug failures
-* inspect Snowflake
-* iterate on agents
-* validate results
-
-The repository remains the source of truth.
-
-Snowflake remains the governed data/runtime platform.
-
-CoCo is the AI-native engineering interface.
-
----
-
-# 31. Engineering Repository
-
-```text
-factory-reliability/
-│
-├── README.md
-│
-├── architecture/
-│   ├── system.md
-│   ├── data-model.md
-│   ├── ontology.md
-│   ├── agent-architecture.md
-│   └── security.md
-│
-├── ingestion/
-│   ├── connectors/
-│   ├── schemas/
-│   └── pipelines/
-│
-├── snowflake/
-│   ├── database/
-│   ├── schemas/
-│   ├── raw/
-│   ├── standardized/
-│   ├── curated/
-│   ├── semantic/
-│   ├── analytics/
-│   ├── intelligence/
-│   ├── streams/
-│   ├── tasks/
-│   └── procedures/
-│
-├── models/
-│   ├── features/
-│   ├── anomaly/
-│   ├── failure/
-│   ├── oee/
-│   └── evaluation/
-│
-├── agents/
-│   ├── orchestration/
-│   ├── reliability/
-│   ├── quality/
-│   ├── oee/
-│   ├── tools/
-│   ├── prompts/
-│   └── policies/
-│
-├── integrations/
-│   ├── cmms/
-│   ├── erp/
-│   ├── mcp/
-│   └── notifications/
-│
-├── application/
-│   ├── streamlit/
-│   ├── services/
-│   ├── components/
-│   └── state/
-│
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   ├── data/
-│   ├── models/
-│   ├── agents/
-│   └── end_to_end/
-│
-├── infrastructure/
-│   ├── environments/
-│   └── deployment/
-│
-├── scripts/
-│
-└── docs/
-```
-
 ---
+
+## Table of Contents
 
-# 32. Multi-Plant Architecture
+- [1. Overview](#1-overview)
+- [2. Why DeRule](#2-why-derule)
+- [3. Core Capabilities](#3-core-capabilities)
+- [4. Product Workflow](#4-product-workflow)
+- [5. System Architecture](#5-system-architecture)
+- [6. Agentic Investigation Layer (M4 READ Boundary)](#6-agentic-investigation-layer-m4-read-boundary)
+- [7. Governance & Action Gateway (M5 Boundary)](#7-governance--action-gateway-m5-boundary)
+- [8. Snowflake Data Architecture](#8-snowflake-data-architecture)
+- [9. End-to-End Data Flow](#9-end-to-end-data-flow)
+- [10. Canonical Flagship Scenario: M21 (Grinder 3)](#10-canonical-flagship-scenario-m21-grinder-3)
+- [11. Closed-Loop Physical Verification](#11-closed-loop-physical-verification)
+- [12. Performance & Scaling Profile](#12-performance--scaling-profile)
+- [13. Technology Stack](#13-technology-stack)
+- [14. Repository Structure](#14-repository-structure)
+- [15. Quick Start](#15-quick-start)
+- [16. Snowflake Configuration](#16-snowflake-configuration)
+- [17. Environment Variables](#17-environment-variables)
+- [18. Running Locally](#18-running-locally)
+- [19. Testing Strategy](#19-testing-strategy)
+- [20. Production Deployment Considerations](#20-production-deployment-considerations)
+- [21. Security & Operational Guardrails](#21-security--operational-guardrails)
+- [22. Data Model & Domain Ontology](#22-data-model--domain-ontology)
+- [23. Documentation Map](#23-documentation-map)
+- [24. Implementation Status](#24-implementation-status)
+- [25. Product Roadmap](#25-product-roadmap)
+- [26. Contributing](#26-contributing)
+- [27. License & Disclaimer](#27-license--disclaimer)
+
+---
+
+## 1. Overview
+
+**DeRule** is an enterprise-grade industrial reliability intelligence platform. It bridges the gap between raw sensor telemetry collected at the machine edge and actionable maintenance execution coordinated across plant operations.
+
+Instead of presenting disjointed dashboards or relying on opaque black-box AI chatbots, DeRule enforces a structured, evidence-grounded operational cycle:
+1. **Detects** impending equipment degradation using predictive machine learning models and statistical threshold monitors in Snowflake.
+2. **Investigates** anomalies using a fleet of 13 typed, read-only tools that inspect machine history, sensor dynamics, inventory stock, and engineering manuals.
+3. **Decides** root causes through differential diagnostic evaluation, producing strictly **advisory** recommendations.
+4. **Acts** only through explicit human governance—routing actionable proposals through a strict human approval gateway before executing work orders or inventory reservations.
+5. **Verifies** mechanical recovery by observing post-maintenance physical telemetry against quantitative verification policies.
+
+Snowflake serves as the authoritative production system of record. Streamlit delivers the interactive command center UI.
+
+---
+
+## 2. Why DeRule
+
+Traditional plant maintenance suffers from fragmented operational context:
+* **Siloed Systems:** Vibration telemetry resides in OT historians, work orders sit in CMMS systems, production commitments are tracked in ERPs, and equipment manuals exist as scattered PDFs.
+* **Alert Fatigue:** Threshold alarms fire continuously without correlating past failure modes or downstream business impacts.
+* **Uncontrolled AI Agents:** Generic LLMs with write access or arbitrary SQL execution pose severe operational and safety hazards in industrial environments.
+* **Premature Closeout:** Maintenance work orders are marked complete administratively without empirical verification that the machine is physically healthy.
+
+DeRule solves these problems by establishing:
+* **A Single Source of Truth:** A conformed 19-table industrial data model in Snowflake (`COCO_FACTORY`).
+* **Typed Read-Only Tool Firewall:** An M4 investigation boundary with zero mutation authority and no arbitrary SQL execution.
+* **Mandatory Human-in-the-Loop Governance:** Autonomous agents are strictly prohibited from approving consequential actions.
+* **Closed-Loop Physical Verification:** Machine restoration is validated against actual sensor readings, calculating avoided downtime and generating verified training labels for future ML models.
+
+---
+
+## 3. Core Capabilities
+
+| Capability | Description | Architectural Component |
+| :--- | :--- | :--- |
+| **Fleet Command Center** | Real-time monitoring of 25 industrial assets, plant-wide OEE, active risk scores, open alerts, and critical anomalies. | `app/streamlit/views/command_center.py` |
+| **Predictive Maintenance** | 7-day degradation risk forecasting powered by a 29-feature gradient boosted classifier model. | `ml/models/failure_predictor.py` (`CORE.PREDICTION`) |
+| **Agentic Investigation** | Autonomous, multi-source evidence gathering across telemetry, maintenance logs, ERP orders, and OEM SOPs. | `services/investigation_service.py` |
+| **Differential Diagnosis** | Systematic evaluation of competing mechanical/electrical failure hypotheses with explicit evidence citations. | `domain/models/intelligence.py` (`Hypothesis`) |
+| **Human Approval Gateway** | Governed authorization boundary with caller validation, expiration deadlines, and idempotency protection. | `services/approval_gateway.py` |
+| **Governed Action Tools** | Typed mutation tools for work order creation, technician assignment, and spare parts reservation. | `tools/actions/` (`M5ActionRegistry`) |
+| **Closed-Loop Verification** | Quantitative assessment of post-maintenance sensor readings against formal recovery policies. | `services/verification_service.py` |
+
+---
+
+## 4. Product Workflow
+
+DeRule operates across five tightly governed phases:
+
+$$\mathbf{DETECT} \longrightarrow \mathbf{INVESTIGATE} \longrightarrow \mathbf{DECIDE} \longrightarrow \mathbf{ACT} \longrightarrow \mathbf{VERIFY}$$
+
+```mermaid
+flowchart LR
+    Detect["1. DETECT<br/>Telemetry Thresholds<br/>7-Day Risk Spikes"] -->
+    Investigate["2. INVESTIGATE<br/>13 Typed Read Tools<br/>Evidence Chain Assembly"] -->
+    Decide["3. DECIDE<br/>Differential Diagnosis<br/>Advisory Recommendation"] -->
+    Act["4. ACT<br/>Human Approval Gate<br/>Governed Mutation"] -->
+    Verify["5. VERIFY<br/>Post-Action Telemetry<br/>Closed-Loop Outcome"]
 
-The product should be multi-plant by design.
-
-The logical hierarchy is:
-
-```text
-Organization
-    │
-    ├── Region
-    │     ├── Plant A
-    │     └── Plant B
-    │
-    └── Region
-          ├── Plant C
-          └── Plant D
+    classDef stage fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
+    class Detect,Investigate,Decide,Act,Verify stage;
 ```
-
-Every operational entity should have appropriate organizational scope.
 
-Examples:
+1. **DETECT:** Telemetry anomalies trigger threshold alerts in `CORE.ALERT`, while daily ML feature scoring flags high-risk machines in `CORE.PREDICTION`.
+2. **INVESTIGATE:** `InvestigationService` deploys 13 typed read-only tools behind the M4 firewall to extract asset context, sensor dynamics, past work orders, supply chain status, and maintenance SOPs.
+3. **DECIDE:** Snowflake Cortex / CoCo investigation adapter evaluates evidence to formulate competing hypotheses and outputs diagnostic findings alongside **advisory-only** recommendations.
+4. **ACT:** Recommendations are promoted to formal `ActionProposal` records. Preconditions are validated, and a human operator authorizes execution via `ApprovalGateway`.
+5. **VERIFY:** Following maintenance execution, `VerificationService` monitors real-time sensor data over a 24-hour window against a `VerificationPolicy` to empirically verify asset recovery.
+
+---
+
+## 5. System Architecture
+
+```mermaid
+flowchart TD
+    subgraph OT_IT["Factory Floor & Enterprise IT"]
+        Sensors["Physical Sensors & PLCs"]
+        CMMS["CMMS & ERP (SAP / Work Orders)"]
+        SOPs["OEM Manuals & Engineering SOPs"]
+    end
+
+    subgraph Snowflake["Snowflake Authoritative Platform (COCO_FACTORY)"]
+        RAW["RAW: Ingested Telemetry & Batch Logs"]
+        CORE["CORE: 19 Conformed Relational Tables"]
+        ANALYTICS["ANALYTICS: Health Baselines & OEE Snapshots"]
+        ML["ML: Feature Store & 7-Day Model Predictions"]
+        KNOWLEDGE["KNOWLEDGE: Chunked SOPs & Vector Index"]
+        APP["APP: Governed Workflows, Approvals & Outcomes"]
+    end
 
-```text
-organization_id
-region_id
-plant_id
-area_id
-line_id
-machine_id
-```
+    subgraph Investigation["Investigation Engine (M4 READ Firewall)"]
+        Registry["M4 Investigation Tool Registry"]
+        ReadTools["13 Typed Read Tools"]
+        InvService["InvestigationService"]
+        Cortex["Snowflake Cortex / LLM Adapter"]
+    end
 
-This enables:
+    subgraph Governance["Governance & Action Gateway (M5 Boundary)"]
+        Proposal["ActionProposal"]
+        Preconditions["Precondition Checks"]
+        HumanGate["Human Approval Gate (Actor-Validated)"]
+        ActionExec["ActionExecutionService"]
+        VerifService["VerificationService"]
+        Outcome["ActionOutcome (Training Data)"]
+    end
 
-* plant-level dashboards
-* regional comparisons
-* centralized reliability teams
-* plant-specific policies
-* tenant isolation
-
----
+    subgraph UI["Presentation Tier (Streamlit)"]
+        CommandCenter["DeRule Command Center & Workspaces"]
+    end
 
-# 33. Security and Governance
+    Sensors --> RAW
+    CMMS --> RAW
+    SOPs --> RAW
 
-Industrial data can be highly sensitive.
+    RAW --> CORE
+    CORE --> ANALYTICS
+    CORE --> ML
+    CORE --> KNOWLEDGE
 
-The platform should support:
+    ML -.->|Risk Spike| InvService
+    CORE -.->|Alert| InvService
+    CommandCenter -.->|Manual Trigger| InvService
 
-* role-based access control
-* least-privilege access
-* environment separation
-* audit logging
-* data masking where required
-* secure secrets management
-* controlled agent tools
-* action authorization
-* document access controls
+    InvService --> Registry
+    Registry --> ReadTools
+    ReadTools --> CORE
+    ReadTools --> ML
+    ReadTools --> KNOWLEDGE
+    InvService --> Cortex
+    Cortex --> APP
 
-Typical roles may include:
+    APP -.->|Advisory Recommendation| Proposal
+    Proposal --> Preconditions
+    Preconditions -->|Valid| HumanGate
+    HumanGate -->|Approved by Human| ActionExec
+    ActionExec --> CORE
+    ActionExec --> APP
+    ActionExec --> VerifService
+    VerifService --> Sensors
+    VerifService --> Outcome
+    Outcome --> APP
 
-```text
-Plant Operator
-Maintenance Technician
-Reliability Engineer
-Production Manager
-Plant Manager
-Central Reliability Team
-Administrator
+    CORE --> CommandCenter
+    APP --> CommandCenter
+    ANALYTICS --> CommandCenter
 ```
-
-Each role should see and perform only what it needs.
 
 ---
-
-# 34. Agent Security
-
-Agent tools are privileged interfaces.
 
-A tool such as:
+## 6. Agentic Investigation Layer (M4 READ Boundary)
 
-```text
-create_work_order()
-```
+DeRule enforces an absolute security boundary around diagnostic investigations:
+* **Strict Read-Only Mode:** All investigation tools inherit from `BaseReadTool` and enforce `ToolMode.READ`.
+* **Action Firewall:** Any tool declaring a mutating mode or matching action verbs (`execute_sql`, `mutate`, `create_work_order`, `approve`, `purchase`) is rejected at startup with an `ActionFirewallError`.
+* **Zero Arbitrary SQL:** The LLM cannot formulate or execute freeform SQL queries against Snowflake. All database queries are parameter-bound and schema-validated.
 
-must not be treated like:
+### The 13 Typed Read Tools
 
 ```text
-get_machine_temperature()
+tools/read/
+├── prediction_tools.py
+│   ├── GetPredictionTool             # Failure probability, risk band, horizon
+│   ├── GetPredictionLineageTool      # Model version, feature snapshot ID, dataset lineage
+│   └── GetFeatureSnapshotTool        # 29-feature vector scored at inference time
+├── sensor_tools.py
+│   └── GetSensorContextTool          # High-frequency telemetry, warn/crit thresholds, trends
+├── asset_tools.py
+│   ├── GetMachineContextTool         # Criticality, model specifications, installed components
+│   └── GetMachineHealthTool          # Health assessment, active anomalies, OEE status
+├── maintenance_tools.py
+│   ├── GetMaintenanceHistoryTool     # Historical corrective and preventive work orders
+│   └── GetHistoricalFailuresTool     # Recurring failure codes, fault classes, symptoms
+├── downtime_tools.py
+│   └── GetDowntimeHistoryTool        # Stoppage intervals, root-cause categories, durations
+├── supply_chain_tools.py
+│   ├── GetInventoryRiskTool          # Stock on hand, supplier lead time, warehouse bin
+│   └── GetProductionContextTool      # Running orders, due dates, units at risk, exposure
+└── knowledge_tools.py
+    ├── SearchKnowledgeTool           # Semantic vector and keyword search across SOPs
+    └── GetKnowledgeDocumentTool      # Full-text retrieval of OEM troubleshooting manuals
 ```
-
-Tools should have:
-
-* authorization
-* input validation
-* output validation
-* audit logging
-* rate limits
-* idempotency
-* failure handling
-
-Actions should be categorized by risk.
-
----
-
-# 35. Observability
 
-The platform needs observability at three levels.
-
-## Data Observability
-
-Monitor:
-
-* freshness
-* completeness
-* duplicates
-* schema changes
-* invalid values
-* sensor gaps
-
-## Model Observability
-
-Monitor:
-
-* prediction distribution
-* drift
-* false positives
-* false negatives
-* calibration
-* model performance
-
-## Agent Observability
-
-Monitor:
-
-* execution time
-* tool calls
-* tool failures
-* evidence retrieval
-* recommendations
-* action success
-* hallucination/error cases
-
 ---
 
-# 36. Auditability
+## 7. Governance & Action Gateway (M5 Boundary)
 
-Every agent execution should generate an audit record.
+DeRule draws a hard architectural line between **advisory recommendations** and **consequential actions**:
 
-Example:
-
 ```text
-Agent Execution
-├── execution_id
-├── agent
-├── trigger
-├── machine
-├── input_context
-├── tools_called
-├── evidence
-├── recommendation
-├── confidence
-├── action_requested
-├── approval
-├── action_result
-├── execution_time
-└── outcome
+ADVISORY RECOMMENDATION ──► PROPOSAL ──► PRECONDITIONS ──► HUMAN APPROVAL ──► EXECUTION ──► VERIFICATION
+      (Non-Executable)       (Formal)     (State Check)     (Human Actor)      (Receipt)     (Telemetry)
 ```
 
-The platform should make these records available for troubleshooting and governance.
+1. **Advisory Recommendations:** Persisted in `APP.INVESTIGATION_RECOMMENDATION` with status `ADVISORY`. They cannot mutate factory data.
+2. **Promotion to Proposal:** A recommendation must be explicitly promoted to an `ActionProposal` in `APP.ACTION_PROPOSAL`.
+3. **Precondition Validation:** `ActionPreconditionService` verifies operational prerequisites (e.g., confirming no conflicting work order is already active, verifying part availability). If preconditions fail, the proposal is marked `EXECUTION_BLOCKED`.
+4. **Human Actor Validation:** `ApprovalGateway` validates the `caller_actor`. Blank, whitespace, or autonomous identities (e.g., `ReliabilityAgent`, `SYSTEM`) are strictly rejected.
+5. **Approval Expiration:** Every approval has a mandatory `expires_at` timestamp. Expired approvals cannot be executed.
+6. **Idempotency Protection:** Unique idempotency keys prevent duplicate work order creation or double reservations.
+7. **Action Execution:** Once authorized, `ActionExecutionService` dispatches the typed action tool (`CreateWorkOrderAction`, `ReserveSparePartAction`, `AssignTechnicianAction`) and records an immutable receipt in `APP.ACTION_EXECUTION`.
 
 ---
-
-# 37. Human-in-the-Loop
-
-The product supports progressive automation.
-
-### Level 1
-
-AI detects and informs.
-
-```text
-Detect → Notify
-```
-
-### Level 2
-
-AI investigates.
-
-```text
-Detect → Investigate → Explain
-```
-
-### Level 3
-
-AI recommends.
-
-```text
-Detect → Investigate → Recommend
-```
-
-### Level 4
-
-AI prepares action.
-
-```text
-Detect → Investigate → Recommend → Prepare
-```
-
-### Level 5
 
-AI executes authorized actions.
+## 8. Snowflake Data Architecture
 
-```text
-Detect → Investigate → Recommend → Approve → Execute
-```
+The production database is `COCO_FACTORY`, structured into six conformed schemas:
 
-The appropriate level depends on asset criticality and organizational policy.
+| Schema | Purpose | Primary Tables / Views |
+| :--- | :--- | :--- |
+| **`RAW`** | Ingestion landing zone with file metadata. | `RAW.MACHINE`, `RAW.SENSOR_READING`, `RAW.MAINTENANCE_WORK_ORDER`, `RAW.KNOWLEDGE_DOC` |
+| **`CORE`** | 19 conformed relational tables with primary and foreign key constraints. | `MACHINE`, `COMPONENT`, `SENSOR`, `SENSOR_READING`, `SENSOR_READING_HOURLY`, `PRODUCT`, `PRODUCTION_ORDER`, `PRODUCTION_RUN`, `DOWNTIME_EVENT`, `TECHNICIAN`, `MAINTENANCE_WORK_ORDER`, `MAINTENANCE_LOG`, `SUPPLIER`, `SPARE_PART`, `PURCHASE_ORDER`, `WO_PART_USAGE`, `ALERT`, `PREDICTION`, `KNOWLEDGE_DOC` |
+| **`ANALYTICS`** | Pre-aggregated rollups for sub-second UI views. | `MACHINE_HEALTH_DAILY`, `MACHINE_OEE_DAILY`, `MACHINE_DOWNTIME_DAILY`, `MAINTENANCE_HISTORY`, `INVENTORY_RISK`, `PRODUCTION_RISK` |
+| **`ML`** | Predictive modeling feature store and model registry. | `MODEL_REGISTRY`, `MACHINE_FEATURE_DAILY`, `INFERENCE_LOG`, `PREDICTION_FEATURE_SNAPSHOT`, `PREDICTION_LINEAGE` |
+| **`KNOWLEDGE`** | Categorized corpus for semantic search. | `CORPUS` (chunked documents, failure modes, category tags, vector metadata) |
+| **`APP`** | Governed investigation and action operational state. | `INVESTIGATION`, `INVESTIGATION_EVIDENCE`, `INVESTIGATION_HYPOTHESIS`, `INVESTIGATION_FINDING`, `INVESTIGATION_RECOMMENDATION`, `INVESTIGATION_TOOL_CALL`, `ACTION_PROPOSAL`, `ACTION_APPROVAL`, `ACTION_EXECUTION`, `ACTION_AUDIT`, `VERIFICATION_POLICY`, `VERIFICATION_RESULT`, `ACTION_OUTCOME` |
 
 ---
 
-# 38. Continuous Learning Loop
+## 9. End-to-End Data Flow
 
-The system should learn from operational outcomes.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Factory as Machine Telemetry / Sensors
+    participant SF_Core as Snowflake CORE & ML
+    participant InvSvc as InvestigationService
+    participant Cortex as Snowflake Cortex (LLM)
+    participant Human as Human Operator
+    participant ActSvc as ActionExecutionService
+    participant VerifSvc as VerificationService
 
-```text
-Prediction
-    ↓
-Investigation
-    ↓
-Recommendation
-    ↓
-Maintenance
-    ↓
-Outcome
-    ↓
-Was diagnosis correct?
-    ↓
-Update knowledge/model
-```
+    Factory->>SF_Core: Ingest Sensor Readings & Compute Features
+    SF_Core->>SF_Core: ML Model Scores Risk: M21 (Prob: 0.95, HIGH)
+    SF_Core->>InvSvc: Trigger Investigation (Trigger: PRED-000322)
 
-For example:
+    rect rgb(240, 245, 255)
+        Note over InvSvc,SF_Core: M4 Read Tool Execution (Strictly Read-Only)
+        InvSvc->>SF_Core: GetPrediction, SensorContext, MaintenanceHistory
+        InvSvc->>SF_Core: GetInventoryRisk (SP-002: 0 in stock)
+        InvSvc->>SF_Core: GetProductionContext (PRD-01278: 211 units at risk)
+        InvSvc->>SF_Core: SearchKnowledge (Bearing Inspection SOP)
+    end
 
-```text
-Predicted:
-Bearing degradation
+    InvSvc->>Cortex: Synthesize Evidence into Hypotheses & Advisory Guidance
+    Cortex-->>InvSvc: Diagnostic Synthesis
+    InvSvc->>SF_Core: Persist Investigation (Status: ADVISORY)
 
-Action:
-Bearing inspected
+    Human->>InvSvc: Promote Advisory Recommendation to ActionProposal
+    InvSvc->>SF_Core: Persist ActionProposal (Requires Approval: TRUE)
+    Human->>Human: Review Proposal, Preconditions & Evidence
+    Human->>ActSvc: Approve Proposal (caller_actor: "shubham")
 
-Outcome:
-Bearing replaced
+    ActSvc->>SF_Core: Execute CreateWorkOrderAction -> Work Order Created: WO-000639
+    ActSvc->>SF_Core: Record Execution Log in APP.ACTION_EXECUTION
 
-Result:
-Vibration returned to baseline
+    Note over VerifSvc,Factory: Post-Maintenance Observation Window (24h)
+    Factory->>SF_Core: Telemetry Flow Continues Post-Maintenance
+    VerifSvc->>SF_Core: Evaluate Post-Action Telemetry vs VerificationPolicy
+    VerifSvc->>SF_Core: Persist VerificationResult & ActionOutcome (Observed Failure Confirmed: TRUE)
 ```
-
-This becomes valuable labeled operational evidence.
 
 ---
 
-# 39. Knowledge Layer
+## 10. Canonical Flagship Scenario: M21 (Grinder 3)
 
-The platform should combine structured and unstructured knowledge.
+DeRule includes a fully documented, end-to-end canonical scenario based on machine **M21**:
 
-### Structured
+* **Target Machine:** `M21` (*Grinder 3*) — Criticality: `CRITICAL`.
+* **Component:** `C-M21-BRG` (*Drive-End Bearing*).
+* **Observed Signals:** Vibration RMS elevated to $0.92\text{ mm/s}$ (warning threshold: $0.75\text{ mm/s}$), bearing temperature elevated to $74.2^\circ\text{C}$ (warning threshold: $75.0^\circ\text{C}$).
+* **ML Failure Prediction:** `PRED-000322` ($P(\text{failure}) = 0.95$, risk: `HIGH`, horizon: 7 days, model: `hgb_failure_7d_v1`).
+* **Supply Chain Context:** Spare part `SP-002` (*Drive-End Bearing 6206-2RS*) has `stock_qty = 0`, vendor lead time: 5 days, supplier: `SUP-12`.
+* **Production Exposure:** Production order `PRD-01278` is actively running, with 211 units remaining, representing ₹83,134 at risk.
+* **Canonical Investigation:** `INV-M21-20261002-001`.
+* **Investigation Status:** `ADVISORY`.
+* **Advisory Recommendation:** `INSPECT_BEARING_ASSEMBLY` (*Conduct non-invasive acoustic/vibration check during scheduled changeover*).
 
-* telemetry
-* failures
-* maintenance
-* production
-* quality
-* OEE
+> [!IMPORTANT]
+> **Truthfulness Rule:** In the canonical baseline data, M21's bearing is degrading, but has **not** suffered catastrophic failure. No physical maintenance, spare part reservation, or recovery has occurred on canonical M21 data.
 
-### Unstructured
-
-* machine manuals
-* maintenance procedures
-* engineering standards
-* inspection instructions
-* troubleshooting guides
-* operator notes
-
-The agent uses both.
-
 ---
-
-# 40. Reliability Knowledge Graph / Ontology
-
-The semantic model should capture relationships such as:
-
-```text
-Machine
-  HAS_COMPONENT
-      ↓
-Bearing
-
-Machine
-  HAS_SENSOR
-      ↓
-Vibration Sensor
-
-Machine
-PRODUCES
-      ↓
-Production Run
-
-Machine
-EXPERIENCED
-      ↓
-Failure
-
-Failure
-AFFECTED
-      ↓
-Component
-
-Failure
-RESOLVED_BY
-      ↓
-Maintenance Action
-
-Machine
-CONTRIBUTES_TO
-      ↓
-OEE Loss
-```
 
-This provides a machine-readable operational context for agents and analytics.
+## 11. Closed-Loop Physical Verification
 
----
+Administrative work order closure does not equal mechanical restoration. DeRule enforces closed-loop physical verification:
 
-# 41. Event Architecture
+```mermaid
+flowchart TD
+    WO_Close["Work Order Closed in CMMS"] --> FetchPolicy["Fetch VERIFICATION_POLICY for Failure Mode"]
+    FetchPolicy --> ObserveTelemetry["Observe Post-Maintenance Telemetry (24h Window)"]
+    ObserveTelemetry --> Compare["Evaluate Against Quantitative Policy Criteria"]
 
-Important operational events should be modeled explicitly.
+    Compare --> Check1{"Vibration RMS <= 0.50 mm/s?"}
+    Check1 -- Yes --> Check2{"Bearing Temp <= 65.0 °C?"}
+    Check2 -- Yes --> Check3{"Risk Score <= 0.25?"}
+    Check3 -- Yes --> Check4{"Vibration Reduction >= 30%?"}
 
-Examples:
+    Check4 -- Yes --> Verified["VerificationResult: VERIFIED<br/>is_recovered = TRUE"]
+    Check1 -- No --> Failed["VerificationResult: FAILED<br/>is_recovered = FALSE"]
+    Check2 -- No --> Failed
+    Check3 -- No --> Failed
+    Check4 -- No --> Failed
 
-```text
-SensorAnomalyDetected
-FailureRiskIncreased
-QualityDegradationDetected
-MachineStopped
-MaintenanceRequired
-InvestigationStarted
-RecommendationGenerated
-WorkOrderCreated
-WorkOrderCompleted
-MachineRecovered
+    Verified --> Outcome["Record ActionOutcome<br/>• observed_failure_confirmed = TRUE<br/>• downtime_avoided_hours calculated<br/>• Ground-truth label for ML retraining"]
+    Failed --> Outcome
 ```
 
-The system can then react to events rather than relying exclusively on dashboard polling.
+* **Policy Criteria:** Evaluates post-maintenance sensor telemetry against engineering limits defined in `APP.VERIFICATION_POLICY`.
+* **Physical Telemetry Proof:** Requires observed reductions in vibration RMS ($\ge 30\%$) and temperature ($\le 65^\circ\text{C}$).
+* **Ground-Truth Label Generation:** Successful verifications generate verified labels in `APP.ACTION_OUTCOME` to close the machine learning feedback loop.
 
 ---
 
-# 42. Alert Lifecycle
+## 12. Performance & Scaling Profile
 
-Alerts follow a defined state machine.
+During local and live Snowflake validation passes, the DeRule Command Center underwent performance optimization:
 
-```text
-DETECTED
-   ↓
-TRIAGED
-   ↓
-INVESTIGATING
-   ↓
-CONFIRMED
-   ↓
-ACTION_REQUIRED
-   ↓
-WORK_ORDER_CREATED
-   ↓
-IN_PROGRESS
-   ↓
-RESOLVED
-   ↓
-VERIFIED
-   ↓
-CLOSED
-```
+| Metric | Unoptimized Baseline | Optimized DeRule Architecture | Improvement |
+| :--- | :--- | :--- | :--- |
+| **Total Command Center Load Time** | 244.091 seconds | **3.280 seconds** | **74x Speedup** |
+| **Snowflake Queries per Load** | 69 queries | **9 queries** | **87% Reduction** |
+| **Query Scaling Across Fleet** | $O(N)$ (linear per machine) | **$O(1)$ (scale-invariant)** | Constant Query Load |
 
-Alternative outcomes include:
+> [!NOTE]
+> These numbers represent measured local/live Snowflake profiling results on a 25-machine factory fleet, not universal service level agreements (SLAs).
 
-```text
-FALSE_POSITIVE
-DUPLICATE
-INSUFFICIENT_DATA
-IGNORED
-DEFERRED
-```
+### Key Architectural Optimizations:
+1. **$O(1)$ Batch Repository APIs:** Eliminated $N+1$ query loops by fetching fleet-wide feature snapshots, OEE statistics, and health metrics in aggregated queries (`get_latest_features_batch`, `get_fleet_oee_summary`).
+2. **`CommandCenterSnapshot`:** Unified aggregation model in `app/streamlit/services/view_service.py` that hydrates all dashboard components in a single pass.
+3. **Session-Level TTL Caching:** Implemented a short 10-second cache TTL to ensure instant UI responsiveness while preserving telemetry freshness.
+4. **Connection Pooling Proxy (`_PooledConnectionProxy`):** Reuses active Snowflake connection handles across Streamlit reruns, eliminating repeated TLS handshake and authentication overhead.
 
 ---
 
-# 43. Work Order Lifecycle
-
-```text
-CREATED
-   ↓
-APPROVED
-   ↓
-ASSIGNED
-   ↓
-IN_PROGRESS
-   ↓
-COMPLETED
-   ↓
-VERIFIED
-   ↓
-CLOSED
-```
+## 13. Technology Stack
 
-The system should link every work order to its originating alert and investigation.
+- **Presentation Layer:** [Streamlit](https://streamlit.io/) (Interactive web interface, custom responsive industrial theme, dark/light modes)
+- **Data & Intelligence Platform:** [Snowflake](https://www.snowflake.com/) (`COCO_FACTORY` database, 6 schemas, conformed relational model)
+- **AI & Evidence Synthesis:** Snowflake Cortex LLM functions, CoCo Investigation Adapter, deterministic diagnostic fallback
+- **Predictive Machine Learning:** [scikit-learn](https://scikit-learn.org/) (`HistGradientBoostingClassifier`, 29 engineered rolling features, 7-day failure horizon)
+- **Core Backend:** Python 3.11+, [Pydantic v2](https://docs.pydantic.dev/) (Strict domain validation), Repository Abstraction Pattern
+- **Testing & Verification:** [pytest](https://docs.pytest.org/) (430+ unit, domain, and security firewall tests), Streamlit `AppTest`
 
 ---
-
-# 44. Failure Investigation Example
-
-Suppose machine M204 begins showing abnormal vibration.
-
-The system detects:
-
-```text
-Vibration:
-+42% vs baseline
-
-Temperature:
-+11°C vs baseline
-
-RPM:
-Increasing variance
 
-Maintenance:
-Bearing inspection overdue
+## 14. Repository Structure
 
-Historical failures:
-3 similar incidents
-```
-
-The Reliability Agent investigates the combined context.
-
-It concludes:
-
-```text
-Likely Failure Mode:
-Bearing degradation
-
-Confidence:
-High
-
-Recommended Action:
-Inspect bearing assembly.
-```
-
-The agent then generates:
-
-```text
-Maintenance Checklist
-```
-
-and, subject to policy:
-
-```text
-Work Order
-```
-
-After maintenance, the system checks:
-
 ```text
-Vibration → baseline
-Temperature → baseline
-Machine → stable
+coco/
+├── app/                              # Streamlit application tier
+│   ├── streamlit_app.py              # Application entrypoint
+│   └── streamlit/
+│       ├── components/               # UI components (cards, tables, timelines)
+│       ├── services/                 # ViewService, CommandCenterSnapshot, caching
+│       └── views/                    # Workspaces (Command Center, Investigations, Assets)
+├── domain/                           # Pure business domain entities & validation
+│   ├── enums/                        # ActionStatus, ApprovalStatus, ToolMode, FailureMode
+│   └── models/                       # Pydantic models (Investigation, Proposal, Outcome)
+├── services/                         # Core application business logic
+│   ├── investigation_service.py      # M4 investigation orchestrator
+│   ├── approval_gateway.py           # Human approval verification gate
+│   ├── action_execution_service.py   # Governed M5 execution coordinator
+│   ├── action_precondition_service.py# Operational prerequisite validation
+│   └── verification_service.py       # Closed-loop telemetry evaluation
+├── tools/                            # Governed tool catalogs
+│   ├── read/                         # 13 typed M4 read tools (ToolMode.READ)
+│   ├── actions/                      # Governed M5 action tools (ToolMode.ACTION)
+│   └── registry.py                   # M4 tool registry & action firewall
+├── repositories/                     # Persistence abstraction layer
+│   ├── base.py                       # Abstract repository contracts
+│   ├── snowflake/                    # Authoritative Snowflake implementations
+│   └── memory/                       # Isolated test fixtures
+├── ml/                               # Predictive maintenance models & feature pipelines
+├── snowflake/ddl/coco_factory/       # Authoritative Snowflake DDL & setup scripts
+├── logo/                             # Official branding assets (light.png, dark.png)
+├── tests/                            # Test suite (unit, integration, UI rendering)
+├── architecture/                     # Technical specifications & domain ontologies
+│   ├── architecture.md               # Authoritative system architecture document
+│   ├── ontology.md                   # Formal domain ontology & ER relationships
+│   └── agent-workflows.md            # Multi-agent investigation specifications
+├── requirements.txt                  # Python dependencies
+├── .env.example                      # Template environment configuration
+└── LICENSE                           # MIT License
 ```
-
-The investigation is then marked verified.
-
----
-
-# 45. Product Metrics
-
-The product should measure operational value.
-
-## Reliability
-
-* Mean time between failures
-* Mean time to repair
-* Failure prediction lead time
-* Unplanned downtime
-* Repeat failure rate
-
-## Maintenance
-
-* Planned vs unplanned maintenance
-* Work-order completion time
-* Maintenance backlog
-* Preventive maintenance compliance
-
-## OEE
-
-* Availability
-* Performance
-* Quality
-* OEE
-
-## AI
-
-* Alert precision
-* Investigation accuracy
-* Recommendation acceptance
-* Action success
-* False-positive rate
-* Agent execution reliability
-
----
-
-# 46. Product Roadmap
-
-## Phase 1: Asset Intelligence
-
-Build:
-
-* canonical asset model
-* telemetry ingestion
-* machine health
-* OEE
-* operational dashboards
-
----
-
-## Phase 2: Predictive Reliability
-
-Build:
-
-* anomaly detection
-* failure prediction
-* reliability alerts
-* machine-health timelines
-
----
-
-## Phase 3: AI Investigation
-
-Build:
-
-* Reliability Agent
-* evidence retrieval
-* root-cause analysis
-* machine-manual retrieval
-* investigation workspace
-
----
-
-## Phase 4: Maintenance Orchestration
-
-Build:
-
-* checklists
-* work-order abstraction
-* CMMS integration
-* approvals
-* action tracking
 
 ---
 
-## Phase 5: Multi-Agent Operations
+## 15. Quick Start
 
-Add:
-
-* Quality Agent
-* OEE Agent
-* Production Agent
-* Maintenance Planning Agent
-
-with an orchestration layer.
-
----
+### Prerequisites
+- Python 3.11 or higher
+- Git
+- Access to a Snowflake account (or run with isolated in-memory test fixtures)
 
-## Phase 6: Enterprise Platform
+### Setup Instructions
 
-Add:
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/sonalhonny71/CoCoProject.git
+   cd CoCoProject
+   ```
 
-* multi-plant deployment
-* role-based access
-* governance
-* model management
-* enterprise integrations
-* reliability benchmarking
+2. **Create and activate a virtual environment:**
+   ```bash
+   # Linux / macOS
+   python -m venv .venv
+   source .venv/bin/activate
 
----
+   # Windows (PowerShell)
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
 
-## Phase 7: Autonomous Operations
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Progressively automate approved workflows.
+4. **Configure environment variables:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your Snowflake credentials (or keep STORAGE_BACKEND=in_memory for offline evaluation)
+   ```
 
-```text
-Monitor
-  ↓
-Detect
-  ↓
-Investigate
-  ↓
-Recommend
-  ↓
-Approve
-  ↓
-Execute
-  ↓
-Verify
-  ↓
-Learn
-```
+5. **Launch DeRule:**
+   ```bash
+   streamlit run app/streamlit_app.py
+   ```
+   Open your browser at `http://localhost:8501`.
 
 ---
 
-# 47. Implementation Strategy
+## 16. Snowflake Configuration
 
-The initial implementation should prioritize a single complete reliability workflow.
+To deploy DeRule against a live Snowflake account, execute the DDL scripts in sequence from `snowflake/ddl/coco_factory/`:
 
-The first production slice is:
+```sql
+-- 1. Database & Schemas
+!source snowflake/ddl/coco_factory/00_database.sql;
+!source snowflake/ddl/coco_factory/01_schemas.sql;
 
-```text
-Machine
-  ↓
-Telemetry
-  ↓
-Health Monitoring
-  ↓
-Failure Risk
-  ↓
-Alert
-  ↓
-Reliability Agent
-  ↓
-Investigation
-  ↓
-Recommendation
-  ↓
-Work Order
-  ↓
-Verification
+-- 2. Conformed Tables
+!source snowflake/ddl/coco_factory/10_raw_tables.sql;
+!source snowflake/ddl/coco_factory/20_core_tables.sql;
+!source snowflake/ddl/coco_factory/30_analytics_foundation.sql;
+!source snowflake/ddl/coco_factory/40_ml_foundation.sql;
+!source snowflake/ddl/coco_factory/50_knowledge_foundation.sql;
+!source snowflake/ddl/coco_factory/60_app_foundation.sql;
 ```
-
-Once that workflow is reliable, expand horizontally.
-
-This is preferable to building ten disconnected features.
-
----
 
-# 48. Development Team
-
-The initial engineering team consists of:
-
-## Data Engineer
-
-Primary ownership:
-
-* industrial data architecture
-* Snowflake
-* ingestion
-* transformations
-* feature engineering
-* OEE
-* predictive models
-* semantic data layer
-* data quality
-
-## Software Engineer
-
-Primary ownership:
-
-* agent architecture
-* orchestration
-* tools
-* MCP
-* application services
-* Streamlit
-* UI implementation
-* work-management integration
-* agent testing
-
-## Shared Ownership
-
-Both engineers participate in:
-
-* product architecture
-* ontology
-* agent design
-* security
-* end-to-end testing
-* CoCo workflows
-* deployment
-* observability
-* product decisions
-
 ---
-
-# 49. Development Workflow with CoCo
 
-The engineering workflow is:
+## 17. Environment Variables
 
-```text
-                 PRODUCT REQUIREMENT
-                         │
-                         ▼
-                       CoCo
-                         │
-                 ┌───────┴────────┐
-                 ▼                ▼
-             Repository        Snowflake
-                 │                │
-                 └───────┬────────┘
-                         ▼
-                     Implement
-                         │
-                         ▼
-                       Test
-                         │
-                         ▼
-                      Execute
-                         │
-                         ▼
-                      Observe
-                         │
-                         ▼
-                       Debug
-                         │
-                         ▼
-                      Improve
-```
+Configure application settings in `.env` (derived from `.env.example`):
 
-CoCo is therefore part of the engineering operating model rather than a separate demo feature.
+| Variable | Description | Default / Example |
+| :--- | :--- | :--- |
+| `STORAGE_BACKEND` | Storage persistence provider (`in_memory` or `snowflake`). | `in_memory` |
+| `SNOWFLAKE_ACCOUNT` | Snowflake account locator. | `xy12345.us-east-1` |
+| `SNOWFLAKE_USER` | Snowflake username. | `RELIABILITY_USER` |
+| `SNOWFLAKE_PASSWORD` | Password (if using password auth). | *None* |
+| `SNOWFLAKE_PRIVATE_KEY_PATH`| Path to PKCS#8 private key (for key-pair auth). | *None* |
+| `SNOWFLAKE_WAREHOUSE` | Compute warehouse. | `COMPUTE_WH` |
+| `SNOWFLAKE_DATABASE` | Target database. | `COCO_FACTORY` |
+| `SNOWFLAKE_SCHEMA` | Default operational schema. | `CORE` |
+| `SNOWFLAKE_ROLE` | User role with operational access. | `RELIABILITY_ENGINEER` |
+| `COCO_FACTORY_SOURCE_ROOT` | Path to canonical source data CSV files. | `data/` |
+| `ANOMALY_ZSCORE_THRESHOLD` | Statistical z-score limit for sensor anomalies. | `2.5` |
+| `FAILURE_RISK_ALERT_THRESHOLD` | Threshold to trigger high-risk predictive alert. | `0.65` |
 
 ---
 
-# 50. Environments
+## 18. Running Locally
 
-The product should maintain separate environments.
-
-```text
-Development
-    ↓
-Testing
-    ↓
-Staging
-    ↓
-Production
+To run DeRule locally on Windows:
+```powershell
+.\.venv\Scripts\Activate.ps1
+streamlit run app\streamlit_app.py
 ```
 
-Snowflake environments should be isolated appropriately.
-
-Agent actions should be progressively enabled as environments advance.
-
----
-
-# 51. Configuration
-
-Product behavior should be configuration-driven.
-
-Examples:
-
-```text
-Failure Risk Threshold
-Alert Threshold
-Machine Criticality
-Action Approval Policy
-Maintenance Priority Rules
-OEE Targets
-Sensor Baselines
-Notification Rules
-Agent Permissions
+To run on Linux / macOS:
+```bash
+source .venv/bin/activate
+streamlit run app/streamlit_app.py
 ```
 
-These should not be hardcoded into application logic.
+The application initializes the DeRule shell and connects to the configured storage backend.
 
 ---
 
-# 52. Synthetic Data for Development
+## 19. Testing Strategy
 
-The development environment should use synthetic data by default.
+DeRule maintains a rigorous, multi-tiered testing suite:
 
-Synthetic scenarios should include:
+```bash
+# Execute standard non-live unit, domain, and security tests (430+ tests):
+pytest tests/ -k "not live and not integration"
 
-* healthy machine
-* gradual degradation
-* sudden failure
-* intermittent sensor
-* missing telemetry
-* false positive
-* recurring failure
-* maintenance recovery
-* quality degradation
-* production slowdown
+# Run UI rendering and HTML leak prevention tests:
+pytest tests/test_ui_rendering.py tests/test_ui_canonical_investigation_view.py
 
-This allows deterministic testing without exposing production data.
-
----
-
-# 53. Quality Engineering
-
-The product should be tested at multiple layers.
-
-```text
-Unit Tests
-    ↓
-Data Tests
-    ↓
-Integration Tests
-    ↓
-Model Tests
-    ↓
-Agent Evaluation
-    ↓
-End-to-End Tests
+# Run M4 read firewall and M5 action boundary tests:
+pytest tests/test_action_execution_boundary.py tests/test_action_proposal_handoff.py
 ```
 
-Agent evaluations should measure:
+* **Live Snowflake Tests:** Tests requiring active Snowflake connectivity are marked `@pytest.mark.live` and separated from the default CI suite.
+* **Read-Only Live Validation:** Live Snowflake tests operate strictly with `SELECT` queries and never mutate production data.
+* **No Live Mutations in Regression:** Operational actions are tested against isolated test fixtures.
 
-* factual correctness
-* evidence usage
-* tool selection
-* tool arguments
-* recommendation quality
-* action correctness
-* refusal under insufficient evidence
-
 ---
-
-# 54. Reliability of the AI System
 
-The AI system itself is treated as an engineered component.
+## 20. Production Deployment Considerations
 
-The platform should monitor:
+When moving DeRule into enterprise production environments:
+1. **Key-Pair Authentication:** Configure RSA key-pair authentication (`SNOWFLAKE_PRIVATE_KEY_PATH`) instead of static passwords.
+2. **Role-Based Access Control (RBAC):** Create dedicated roles (`RELIABILITY_READ`, `RELIABILITY_APP`) with least-privilege grants on `COCO_FACTORY` schemas.
+3. **Snowpipe Streaming:** Replace batch CSV replays with Snowpipe Streaming for real-time sub-second telemetry ingestion.
+4. **Streamlit Deployment:** Deploy the presentation layer using Snowflake Native Apps or containerized services (Snowpark Container Services / Kubernetes).
 
-```text
-Agent Success Rate
-Tool Success Rate
-Investigation Completion
-Evidence Retrieval
-Recommendation Accuracy
-Action Success
-Latency
-Token/Inference Cost
-```
-
-An agent failure should not become a plant failure.
-
-If the AI layer is unavailable, deterministic monitoring and standard operational workflows should continue where possible.
-
 ---
-
-# 55. Product Boundaries
-
-The platform is initially a **reliability intelligence and orchestration layer**.
-
-It does not attempt to replace:
 
-* PLC control systems
-* safety systems
-* SCADA
-* MES
-* ERP
-* CMMS/EAM
-* enterprise data warehouses
+## 21. Security & Operational Guardrails
 
-Instead, it connects intelligence across them.
+DeRule enforces eleven non-negotiable operational guardrails:
 
-The product sits above operational systems and helps users make better decisions across them.
+1. **Snowflake is Authoritative:** Streamlit never acts as an independent data store.
+2. **M4 READ Firewall:** Diagnostic tools are strictly read-only and cannot mutate data.
+3. **No Arbitrary SQL:** Neither LLMs nor end users can submit unvetted SQL queries.
+4. **No Autonomous Self-Approval:** AI agents cannot approve action proposals.
+5. **Human Actor Validation:** Approval and execution endpoints reject non-human or blank actors.
+6. **Time-Bound Approvals:** All approvals expire after a configurable duration.
+7. **Precondition Gating:** Execution is blocked if equipment states or inventory requirements are invalid.
+8. **Idempotent Mutations:** Unique deduplication keys prevent accidental duplicate actions.
+9. **Physical Verification:** Telemetry must empirically demonstrate recovery before closing the loop.
+10. **Immutable Auditing:** Every tool execution and approval decision is logged to audit tables.
+11. **Truthful AI Provenance:** Diagnostic summaries explicitly declare whether Cortex or deterministic fallback models were used.
 
 ---
 
-# 56. Why Snowflake
+## 22. Data Model & Domain Ontology
 
-Snowflake provides the foundation for:
+The full domain ontology is documented in [architecture/ontology.md](architecture/ontology.md).
 
-```text
-Data
-+
-Governance
-+
-Analytics
-+
-ML
-+
-AI
-+
-Semantic Context
-```
-
-This allows the platform to reduce fragmentation between:
-
-```text
-Data Engineering
-Analytics
-Machine Learning
-AI
-Applications
-```
+It formalizes:
+* **20 Factory Core Entities:** Plant, Line, Machine, Component, Sensor, Sensor Reading, Alert, Prediction, Failure Mode, Maintenance Work Order, Maintenance Log, Technician, Spare Part, Supplier, Purchase Order, Production Order, Production Run, Downtime Event, Product, Knowledge Document.
+* **6 AI Investigation Entities:** Investigation, Evidence, Hypothesis, Finding, Recommendation, Tool Call.
+* **6 Governed Action Entities:** Action Proposal, Action Approval, Action Execution, Verification Policy, Verification Result, Action Outcome.
 
-The goal is to avoid creating separate copies of factory truth for every capability.
-
 ---
-
-# 57. Why Agentic AI
-
-Traditional analytics can answer:
-
-```text
-Vibration increased 42%.
-```
-
-A predictive model can answer:
-
-```text
-Failure risk is 87%.
-```
-
-An agent can connect:
-
-```text
-Vibration
-+
-Maintenance
-+
-Historical Failures
-+
-Production
-+
-Documentation
-+
-OEE
-```
-
-and produce:
-
-```text
-Likely bearing degradation.
-
-Evidence:
-...
 
-Recommended action:
-...
+## 23. Documentation Map
 
-Potential production impact:
-...
+- [`architecture/architecture.md`](architecture/architecture.md): Complete technical architecture, layered design, performance profiling, and sequence diagrams.
+- [`architecture/ontology.md`](architecture/ontology.md): Formal entity taxonomy, Snowflake schema mappings, lifecycles, and entity-relationship diagrams.
+- [`architecture/agent-workflows.md`](architecture/agent-workflows.md): Multi-agent investigation specifications, tool orchestration patterns, and prompt contracts.
+- [`snowflake/ddl/coco_factory/`](snowflake/ddl/coco_factory/): Authoritative SQL DDL scripts for all database schemas and tables.
 
-Next maintenance action:
-...
-```
-
-More importantly, the agent can use tools to move from analysis to execution.
-
-That is where agentic AI creates operational value.
-
 ---
-
-# 58. Product Differentiation
-
-The platform is built around the combination of:
-
-```text
-Industrial Data
-       +
-Predictive Intelligence
-       +
-Agentic Investigation
-       +
-Operational Actions
-       +
-OEE Measurement
-```
 
-Most systems stop at one of these layers.
+## 24. Implementation Status
 
-This product connects the entire chain.
+| Component | Status | Verification Detail |
+| :--- | :---: | :--- |
+| **Snowflake 19-Table CORE Schema** | **Complete** | Validated via `snowflake/ddl/coco_factory/20_core_tables.sql` |
+| **29-Feature Predictive Failure Model** | **Complete** | Scored 7-day horizon (`hgb_failure_7d_v1`) in `ml/models/` |
+| **M4 Investigation Tool Registry** | **Complete** | 13 typed read tools enforced behind action firewall |
+| **Cortex Investigation Adapter** | **Complete** | Evidence synthesis with deterministic fallback |
+| **M5 Governed Action Registry** | **Complete** | Typed action tools requiring validated human approval |
+| **Human Approval Gateway** | **Complete** | Actor validation, expiration, and idempotency checks |
+| **Closed-Loop Verification Engine** | **Complete** | Evaluates post-maintenance sensor telemetry vs policy |
+| **Command Center $O(1)$ Optimization** | **Complete** | Latency reduced from 244s to 3.28s (74x speedup) |
+| **Industrial UI Workspaces** | **Complete** | Command Center, Investigations, Assets, Governance |
 
 ---
-
-# 59. Long-Term Vision
 
-The long-term system becomes an AI operating layer for industrial reliability.
-
-```text
-                         INDUSTRIAL AI
-                              │
-       ┌──────────────────────┼──────────────────────┐
-       │                      │                      │
-       ▼                      ▼                      ▼
- Reliability              Production             Quality
-    Agent                    Agent                Agent
-       │                      │                      │
-       └──────────────────────┼──────────────────────┘
-                              │
-                              ▼
-                         Plant Orchestrator
-                              │
-             ┌────────────────┼────────────────┐
-             ▼                ▼                ▼
-            CMMS              ERP             MES
-             │                │                │
-             └────────────────┼────────────────┘
-                              ▼
-                           FACTORY
-                              │
-                              ▼
-                             OEE
-```
+## 25. Product Roadmap
 
-The eventual goal is not simply to predict machine failures.
+### Completed (v2.0 Core)
+- [x] Conformed Snowflake operational schemas and DDL scripts.
+- [x] Supervised predictive failure modeling on 25 industrial assets.
+- [x] M4 read-only investigation engine and evidence collection tools.
+- [x] M5 human-in-the-loop action approval gateway and execution framework.
+- [x] Closed-loop physical telemetry verification engine.
+- [x] Command Center $O(1)$ batch query performance optimization.
 
-It is to create a continuously learning operational intelligence system capable of helping industrial teams:
+### In Progress
+- [ ] **ACTION_OUTCOME Schema Migration:** Deploying final audit columns (`execution_id`, `verification_id`, `telemetry_provenance`, `is_simulated_telemetry`) to live production Snowflake instances.
+- [ ] **Real-Time Telemetry Streaming:** Integrating Snowpipe Streaming for sub-second sensor ingestion.
 
-* prevent failures
-* reduce downtime
-* improve maintenance planning
-* improve quality
-* optimize production
-* improve OEE
-* standardize reliability practices
-* transfer engineering knowledge across plants
+### Planned
+- [ ] **Enterprise CMMS Integrations:** Native API connectors for SAP PM, IBM Maximo, and ServiceNow.
+- [ ] **Snowflake Native App Packaging:** Packaging DeRule for single-click installation via Snowflake Marketplace.
 
 ---
-
-# 60. Product North Star
-
-The Factory Reliability Command Center should ultimately make this possible:
-
-```text
-A machine starts behaving abnormally.
-
-The platform notices.
-
-It understands the machine's context.
-
-It predicts what may happen.
-
-It investigates why.
-
-It finds supporting evidence.
-
-It explains the situation.
-
-It recommends what should be done.
 
-It prepares the maintenance action.
+## 26. Contributing
 
-An authorized user approves it.
+We welcome contributions to DeRule. Please adhere to the following guidelines:
 
-The system creates the work order.
+1. **Branch Workflow:** Create feature branches off `main` (`feature/your-feature-name` or `fix/your-fix-name`).
+2. **Strict Non-Live Rule:** Never execute mutating queries against canonical Snowflake environments during local testing.
+3. **Architectural Guardrails:** Preserve the separation between M4 (Read-Only) and M5 (Governed Action). Do not introduce arbitrary SQL capabilities.
+4. **Testing Standards:** All pull requests must pass the complete test suite:
+   ```bash
+   pytest tests/ -k "not live and not integration"
+   ```
+5. **Documentation Integrity:** Update corresponding sections in `architecture/architecture.md` and `architecture/ontology.md` if modifying data models or interfaces.
 
-Maintenance performs the work.
-
-The platform verifies the machine recovered.
-
-The operational outcome is measured.
-
-The result becomes new knowledge.
-
-The next investigation is better.
-```
-
-That is the product.
-
-Not a chatbot.
-
-Not a dashboard.
+---
 
-Not a predictive-maintenance model.
+## 27. License & Disclaimer
 
-Not an automation script.
+### License
+DeRule is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
-**A continuously operating reliability intelligence layer for the factory.**
+### Industrial Operational Safety Disclaimer
+DeRule is an AI-assisted operational decision support system. In physical industrial environments, all maintenance actions, machine shutdowns, and equipment interventions must be reviewed and authorized by certified plant reliability personnel in accordance with established environmental health and safety (EHS) and plant standard operating procedures (SOPs).

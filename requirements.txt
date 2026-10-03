@@ -1,4 +1,4 @@
-# Factory Reliability Command Center
+# DeRule
 # Production & Runtime Dependencies
 
 # Core Data Models & Validation
