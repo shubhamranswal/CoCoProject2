@@ -28,9 +28,9 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
     app = event.get("pending_approval")
 
     pred = event.get("prediction")
-    mach_id = machine.machine_id if machine else (alert.machine_id if alert else "M204")
-    mach_name = machine.name if machine else "Conveyor Drive Motor"
-    line_id = machine.line_id if machine else "LINE-B"
+    mach_id = machine.machine_id if machine else (alert.machine_id if alert else "M21")
+    mach_name = machine.name if machine else f"Asset {mach_id}"
+    line_id = machine.line_id if machine else "LINE-01"
     severity_val = alert.severity.value if alert else "CRITICAL"
     failure_mode_val = (risk.failure_mode.value if risk else (alert.failure_mode.value if alert else "BEARING_DEGRADATION")).replace("_", " ")
 
@@ -61,7 +61,7 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
         oee_display = "--"
         oee_delta_display = "Pending OEE"
 
-    evidence_count = f"{len(inv.evidence)} correlated" if (inv and getattr(inv, "evidence", None)) else "6 correlated"
+    evidence_count = f"{len(inv.evidence)} correlated" if (inv and getattr(inv, "evidence", None)) else "Evidence correlated"
 
     status_desc = "Investigation required"
     if inv:

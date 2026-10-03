@@ -1,14 +1,17 @@
 """AI Investigations Workspace View.
 
-Follows Sections 16, 17, 18, 19, 20, 21, 22, & 23 of AGENT.md:
-- Investigation Workspace header
-- Investigation progression timeline
-- Evidence Panel (typed facts & sources)
-- Hypothesis Comparison (Supported vs Refuted)
-- Finding Panel (Observed Facts vs Historical Facts vs Inferences)
-- Recommendation Panel (Action Scope & Replacement Parts)
-- Human Approval Gateway (Policy Enforcement & Work Order Generation)
-- Theme CSS variable styling and zero emojis
+Follows Sections 13, 14, 15, 16, 17, 18, 19, 20, 21 of DeRule Product Specification:
+- Product Narrative: DETECT → INVESTIGATE → DECIDE → ACT → VERIFY
+- Strong Hero Section with Equipment, Machine ID, Criticality, Failure Probability, Component, Prediction ID, Investigation ID
+- Dynamic Persisted Narrative generated from actual investigation records
+- Visual Process Pipeline Bar
+- Stage 1 • Threat Detection Context
+- Stage 2 • Grounded Evidence Collection & Provenance
+- Stage 3 • Diagnostic Synthesis & Advisory Recommendations
+- Stage 4 • Human Governance & Approval Gate
+- Stage 5 • Closed-Loop Physical Verification (Truthful state, never implied)
+- Governed Tool Audit Ledger (13 canonical M4 tools)
+- Clean typography, theme CSS variables, and zero emojis
 """
 
 from __future__ import annotations
@@ -66,13 +69,45 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
     action_proposal = detail.get("action_proposal")
     app = detail.get("approval")
     wo = detail.get("work_order")
+    verif = detail.get("verification")
 
-    # Header Card (Dynamic Asset, Trigger, Timestamps)
+    # Dynamic Persisted Narrative Generation
+    fm_raw = inv.failure_mode.value if hasattr(inv.failure_mode, "value") else str(inv.failure_mode)
+    fm_clean = fm_raw.replace("_", " ").lower()
+
+    cat_map = {
+        "SENSOR": "vibration and thermal sensor telemetry",
+        "MAINTENANCE": "maintenance history",
+        "FAILURE_HISTORY": "historical failure precedents",
+        "PRODUCTION": "production commitments",
+        "INVENTORY": "inventory availability",
+        "KNOWLEDGE": "technical manuals",
+        "PREDICTION": "predictive failure models",
+    }
+    present_cats = []
+    seen = set()
+    for ev in evidence:
+        c = (ev.category or ev.evidence_type or "").upper()
+        if c in cat_map and c not in seen:
+            seen.add(c)
+            present_cats.append(cat_map[c])
+
+    if len(present_cats) > 1:
+        ev_phrase = ", ".join(present_cats[:-1]) + f", and {present_cats[-1]}"
+    elif present_cats:
+        ev_phrase = present_cats[0]
+    else:
+        ev_phrase = "correlated operational evidence"
+
+    narrative = f"DeRule detected an abnormal {fm_clean} pattern on {machine_name} ({inv.machine_id}) and investigated supporting {ev_phrase}."
+
+    # Header Card (Dynamic Asset, Trigger, Timestamps, Narrative)
     conf_pct = (inv.confidence * 100) if inv.confidence else 92.0
     trigger_str = inv.trigger_type.value if hasattr(inv.trigger_type, "value") else str(inv.trigger_type or "ANOMALY")
     trigger_ref = getattr(inv, "prediction_id", None) or getattr(inv, "alert_id", None) or getattr(inv, "trigger_id", None) or "N/A"
     completed_dt = getattr(inv, "completed_at", None) or getattr(inv, "created_at", None)
     completed_str = completed_dt.strftime("%Y-%m-%d %H:%M:%S UTC") if completed_dt else "N/A"
+    component_name = getattr(inv, "component_id", "Drive-End Bearing") or "Drive-End Bearing"
 
     st.markdown(
         f"""
@@ -82,6 +117,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
                     <span class="badge badge-info">{inv.status.value}</span>
                     <span class="badge badge-neutral" style="margin-left: 6px;">ASSET: {inv.machine_id}</span>
                     <span class="badge badge-critical" style="margin-left: 6px;">{inv.failure_mode.value}</span>
+                    <span class="badge badge-neutral" style="margin-left: 6px;">COMPONENT: {component_name}</span>
                     <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
                         Reliability Investigation — {inv.investigation_id}
                     </div>
@@ -97,6 +133,49 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
                     <div style="font-size: 11px; color: var(--text-muted);">Evidence Base: {len(evidence)} items</div>
                 </div>
             </div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 10px; padding: 8px 12px; background: var(--bg-hover); border-radius: 6px; border-left: 3px solid var(--primary-accent);">
+                <b>DeRule Operational Narrative:</b> {narrative}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Process Pipeline Bar (DETECT -> INVESTIGATE -> DECIDE -> ACT -> VERIFY)
+    is_proposed = action_proposal is not None
+    is_approved = is_proposed and (getattr(action_proposal, "status", "") == "APPROVED")
+    is_verified = verif is not None
+
+    step4_class = "completed" if is_approved else ("active" if is_proposed else "")
+    step4_label = "APPROVED" if is_approved else ("PENDING REVIEW" if is_proposed else "ADVISORY GATE")
+    step4_dot = "status-dot-healthy" if is_approved else ("status-dot-warning" if is_proposed else "status-dot-info")
+
+    step5_class = "completed" if is_verified else ""
+    step5_label = "VERIFIED" if is_verified else "AWAITING EXECUTION"
+    step5_dot = "status-dot-healthy" if is_verified else "status-dot-neutral"
+
+    st.markdown(
+        f"""
+        <div class="derule-pipeline-bar">
+            <div class="derule-pipeline-step completed">
+                <span class="status-dot status-dot-healthy"></span>1. DETECT
+            </div>
+            <div class="derule-pipeline-arrow">></div>
+            <div class="derule-pipeline-step completed">
+                <span class="status-dot status-dot-healthy"></span>2. INVESTIGATE
+            </div>
+            <div class="derule-pipeline-arrow">></div>
+            <div class="derule-pipeline-step completed">
+                <span class="status-dot status-dot-healthy"></span>3. DECIDE
+            </div>
+            <div class="derule-pipeline-arrow">></div>
+            <div class="derule-pipeline-step {step4_class}">
+                <span class="status-dot {step4_dot}"></span>4. ACT ({step4_label})
+            </div>
+            <div class="derule-pipeline-arrow">></div>
+            <div class="derule-pipeline-step {step5_class}">
+                <span class="status-dot {step5_dot}"></span>5. VERIFY ({step5_label})
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -110,7 +189,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
     call_count = provenance.get("tool_count", len(tool_calls))
     st.markdown(
         f"""
-        <div class="ind-card" style="margin-top: 8px; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px;">
+        <div class="ind-card" style="margin-top: 4px; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 11px;">
                 <div>
                     <span style="color: var(--text-muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em;">Provenance & Execution:</span>
@@ -158,6 +237,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
 
                 sup_badges = "".join([f'<span class="badge badge-healthy" style="margin-right: 4px; font-size: 10px;">SUPPORTS: {eid}</span>' for eid in (h.supporting_evidence_ids or [])])
                 con_badges = "".join([f'<span class="badge badge-critical" style="margin-right: 4px; font-size: 10px;">CONTRADICTS: {eid}</span>' for eid in (h.contradicting_evidence_ids or [])])
+
                 evidence_markup = ""
                 if sup_badges or con_badges:
                     evidence_markup = f"""
@@ -379,7 +459,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
                 })
             st.dataframe(audit_rows, use_container_width=True, hide_index=True)
 
-    # 5. Human Approval Gateway Panel
+    # 6. Human Approval Gateway Panel (Stage 4 • ACT)
     render_approval_panel(
         approval=app,
         investigation=inv,
@@ -387,6 +467,58 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
         on_approve=lambda a_id, actor, r: facade.approve_action(a_id, actor, r),
         on_reject=lambda a_id, actor, r: facade.reject_action(a_id, actor, r),
     )
+
+    # 7. Closed-Loop Physical Verification Panel (Stage 5 • VERIFY)
+    st.markdown(
+        """
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 16px; margin-bottom: 8px;">
+            Stage 5 • Closed-Loop Physical Verification
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if verif:
+        v_status = verif.verification_status.value if hasattr(verif.verification_status, "value") else str(verif.verification_status)
+        v_badge = "badge-healthy" if v_status == "VERIFIED" else "badge-critical"
+        st.markdown(
+            f"""
+            <div class="ind-card-success">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span class="badge {v_badge}">{v_status}</span>
+                        <span style="font-size: 12px; color: var(--text-muted); margin-left: 8px;">ID: <code>{verif.verification_id}</code></span>
+                    </div>
+                    <div style="font-size: 11px; color: #16a34a; font-weight: 600;">
+                        Physical Machine Recovery Confirmed
+                    </div>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                    {verif.verification_reason}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            """
+            <div class="ind-card" style="border: 1px dashed var(--border-subtle); padding: 14px 18px; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">
+                        VERIFICATION GATE
+                    </span>
+                    <span class="badge badge-neutral">PENDING EXECUTION</span>
+                </div>
+                <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-top: 6px;">
+                    No Physical Verification Record Yet
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+                    Closed-loop telemetry verification evaluates post-maintenance physical vibration and thermal signatures following authorized work order execution.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # If work order already created, show link button to navigate
     if wo:

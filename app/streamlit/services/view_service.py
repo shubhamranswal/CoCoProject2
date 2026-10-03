@@ -75,10 +75,10 @@ from tools.actions.work_order_actions import CreateWorkOrderAction
 class CommandCenterFacade:
     """Thin facade composing backend services for the Streamlit presentation layer."""
 
-    def __init__(self, backend_mode: str = "in_memory") -> None:
+    def __init__(self, backend_mode: str = "in_memory", repo: Optional[Any] = None) -> None:
         self.config = get_config()
         self.backend_mode = backend_mode
-        self.repo = get_repository(backend=backend_mode)
+        self.repo = repo if repo is not None else get_repository(backend=backend_mode)
 
         # Services
         self.orchestrator = PipelineOrchestrator(repository=self.repo)
@@ -118,7 +118,7 @@ class CommandCenterFacade:
         self.scenario_engine = M204ScenarioEngine(machine_id="M204")
 
         # Auto-initialize baseline M204 alert in demo mode if unseeded
-        if self.backend_mode == "in_memory":
+        if self.backend_mode == "in_memory" and repo is None:
             self._ensure_initial_state()
 
     def _ensure_initial_state(self) -> None:
@@ -546,34 +546,27 @@ class CommandCenterFacade:
         """Return active critical reliability events for hero alert cards."""
         events: List[Dict[str, Any]] = []
         alerts = self.repo.list_alerts(status=AlertStatus.OPEN)
+        if not alerts:
+            return events
+
+        m_ids = list({a.machine_id for a in alerts if a.machine_id})
+        predictions_map = self.repo.get_latest_predictions(m_ids)
+        risks_map = self.repo.get_latest_failure_risks(m_ids)
+        machines_map = {m.machine_id: m for m in self.repo.list_machines()}
+        all_invs = self.repo.list_investigations()
+        all_apps = self.approval_service.list_pending_approvals()
 
         for a in alerts:
-            machine = self.repo.get_machine(a.machine_id)
-            risk = self.repo.get_latest_failure_risk(a.machine_id)
+            machine = machines_map.get(a.machine_id) or self.repo.get_machine(a.machine_id)
+            risk = risks_map.get(a.machine_id)
+            pred = predictions_map.get(a.machine_id)
             features = self.repo.get_latest_features(a.machine_id)
-            oee_res = self.calculate_machine_oee(a.machine_id)
 
-            # Check if there is already an investigation
-            inv_list = self.repo.list_investigations(machine_id=a.machine_id)
-            inv_matches = [inv for inv in inv_list if inv.alert_id == a.alert_id or inv.machine_id == a.machine_id]
+            inv_matches = [inv for inv in all_invs if inv.alert_id == a.alert_id or inv.machine_id == a.machine_id]
             latest_inv = inv_matches[0] if inv_matches else None
 
-            # Check pending approvals
-            pending_apps = self.approval_service.list_pending_approvals(machine_id=a.machine_id)
-
-            # Resolve or compute calibrated ML prediction
-            pred = self.repo.get_latest_prediction(a.machine_id)
-            if not pred and features:
-                predictor = BearingFailurePredictor()
-                meas = self.repo.get_recent_measurements(a.machine_id, limit=30)
-                pred_feats = extract_predictive_features(meas, as_of=datetime.now(timezone.utc)) if meas else {
-                    "vibration_rms": features.vibration_rms,
-                    "temperature_c": features.temperature_mean,
-                    "vibration_trend_1h": features.vibration_rate_of_change,
-                    "thermal_mechanical_stress_index": (features.vibration_rms / 2.5) * (features.temperature_mean / 60.0),
-                }
-                pred = predictor.predict(a.machine_id, pred_feats)
-                self.repo.save_prediction(pred)
+            pending_apps = [app for app in all_apps if app.machine_id == a.machine_id]
+            oee_res = self.calculate_machine_oee(a.machine_id)
 
             events.append({
                 "alert": a,
@@ -648,24 +641,28 @@ class CommandCenterFacade:
             {"time": (base_t + timedelta(minutes=180)).strftime("%H:%M"), "deterministic_risk": 0.12, "ml_probability": 0.06, "phase": "VERIFIED_RECOVERY"},
         ]
 
-
     def get_asset_grid(self, line_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Return all machines with health, risk, and current alerts for grid view."""
         machines = self.repo.list_machines(line_id=line_id if line_id != "ALL" else None)
+        if not machines:
+            return []
+
+        m_ids = [m.machine_id for m in machines]
+        risks_map = self.repo.get_latest_failure_risks(m_ids)
+        all_alerts = self.repo.list_alerts(status=AlertStatus.OPEN)
+        alert_counts: Dict[str, int] = {}
+        for a in all_alerts:
+            if a.machine_id:
+                alert_counts[a.machine_id] = alert_counts.get(a.machine_id, 0) + 1
+
         grid: List[Dict[str, Any]] = []
         for m in machines:
-            risk = self.repo.get_latest_failure_risk(m.machine_id)
-            features = self.repo.get_latest_features(m.machine_id)
-            alerts = self.repo.list_alerts(machine_id=m.machine_id, status=AlertStatus.OPEN)
-            wo_list = self.repo.list_work_orders(machine_id=m.machine_id)
-            open_wo = [w for w in wo_list if w.status not in (WorkOrderStatus.COMPLETED, WorkOrderStatus.VERIFIED, WorkOrderStatus.CANCELLED)]
-
             grid.append({
                 "machine": m,
-                "risk": risk,
-                "features": features,
-                "active_alerts_count": len(alerts),
-                "open_work_orders_count": len(open_wo),
+                "risk": risks_map.get(m.machine_id),
+                "features": None,
+                "active_alerts_count": alert_counts.get(m.machine_id, 0),
+                "open_work_orders_count": 0,
             })
         return sorted(grid, key=lambda x: (0 if x["machine"].health_status == HealthStatus.CRITICAL else (1 if x["machine"].health_status == HealthStatus.DEGRADING else 2)))
 

@@ -45,10 +45,15 @@ from domain.enums import AlertStatus
 from domain.exceptions import RepositoryUnavailableError
 
 def main() -> None:
-    # 1. Page Configuration
+    # 1. Page Configuration (DeRule Favicon and Title)
     try:
+        from PIL import Image
+        root_path = Path(__file__).resolve().parent.parent.parent
+        logo_path = root_path / "logo" / "light.png"
+        icon_img = Image.open(logo_path) if logo_path.exists() else None
         st.set_page_config(
-            page_title="Factory Reliability Command Center",
+            page_title="DeRule",
+            page_icon=icon_img or "logo/light.png",
             layout="wide",
             initial_sidebar_state="expanded",
         )
@@ -162,41 +167,43 @@ def main() -> None:
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 8px 0 16px 0;'/>", unsafe_allow_html=True)
 
-    # 8. View Router
+    # 9. View Router (Supporting Canonical & Aliased View Names)
     active_view = st.session_state.get("active_nav", "Command Center")
 
-    if active_view == "Command Center":
+    if active_view in ("Command Center",):
         render_command_center_view(facade)
-    elif active_view == "Assets":
+    elif active_view in ("Production", "Assets"):
         render_assets_view(facade)
-    elif active_view == "Reliability":
-        render_reliability_view(facade)
-    elif active_view == "OEE":
+    elif active_view in ("Alerts",):
+        render_command_center_view(facade)
+    elif active_view in ("Downtime", "OEE"):
         render_oee_view(facade)
-    elif active_view == "Quality":
+    elif active_view in ("Quality",):
         render_quality_view(facade)
-    elif active_view == "Maintenance":
+    elif active_view in ("Maintenance", "Inventory"):
         render_maintenance_view(facade)
-    elif active_view == "Work Orders":
+    elif active_view in ("Work Orders",):
         render_work_orders_view(facade)
-    elif active_view == "AI Investigations":
+    elif active_view in ("Investigations", "AI Investigations"):
         render_investigations_view(facade)
-    elif active_view == "Knowledge":
+    elif active_view in ("Reliability",):
+        render_reliability_view(facade)
+    elif active_view in ("Knowledge",):
         render_knowledge_view(facade)
-    elif active_view == "Agent Activity":
+    elif active_view in ("Agent Activity",):
         render_agent_activity_view(facade)
-    elif active_view == "Data & Pipelines":
+    elif active_view in ("System Health", "Data & Pipelines"):
         render_pipelines_view(facade)
-    elif active_view == "Settings":
+    elif active_view in ("Settings",):
         render_settings_view(facade)
     else:
         render_command_center_view(facade)
 
-    # 9. Global Footer
-    st.markdown("<hr style='border: none; border-bottom: 1px solid #1f2430; margin: 30px 0 12px 0;'/>", unsafe_allow_html=True)
+    # 10. Global Footer
+    st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 30px 0 12px 0;'/>", unsafe_allow_html=True)
     col_foot_left, col_foot_right = st.columns([2, 1])
     with col_foot_left:
-        st.caption("Factory Reliability Command Center — Deterministic Closed-Loop Architecture | Built for Industrial Operations")
+        st.caption("DeRule — Enterprise Factory Reliability Command Center | Detect. Investigate. Act")
     with col_foot_right:
         backend_label = "Snowflake Cloud Gov" if st.session_state.backend_mode == "snowflake" else "In-Memory Seeded Store"
         st.caption(f"Status: **ONLINE** | Backend: `{backend_label}` | Version: `v1.2.0`")

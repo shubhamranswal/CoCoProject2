@@ -101,6 +101,11 @@ def apply_industrial_theme(theme_mode: str = "light") -> None:
             --table-header-bg: #141c2b;
             --table-row-alt-bg: #131a26;
             --table-hover-bg: #1a2436;
+
+            --toggle-track-bg: #1c2638;
+            --toggle-active-bg: #0284c7;
+            --toggle-active-text: #ffffff;
+            --toggle-inactive-text: #94a3b8;
         }
         """
     else:
@@ -180,6 +185,11 @@ def apply_industrial_theme(theme_mode: str = "light") -> None:
             --table-header-bg: #f1f5f9;
             --table-row-alt-bg: #fafafa;
             --table-hover-bg: #f1f5f9;
+
+            --toggle-track-bg: #e2e8f0;
+            --toggle-active-bg: #ffffff;
+            --toggle-active-text: #0284c7;
+            --toggle-inactive-text: #64748b;
         }
         """
 
@@ -546,6 +556,146 @@ def apply_industrial_theme(theme_mode: str = "light") -> None:
 
         .dense-table tr:hover td {{
             background-color: var(--table-hover-bg);
+        }}
+
+        /* Calm 200-300ms Theme Transitions */
+        html, body, section[data-testid="stSidebar"], .stApp, .ind-card, .ind-card-hero, .ind-card-warning, .ind-card-success, .evidence-box, .badge, .stButton > button, div[data-testid="stExpander"], .dense-table {{
+            transition: background-color 250ms ease, border-color 250ms ease, color 200ms ease, box-shadow 250ms ease !important;
+        }}
+
+        /* Enterprise Segmented Theme Switcher Control (Native, Zero Radio Appearance) */
+        div[data-testid="stSegmentedControl"] {{
+            background-color: var(--toggle-track-bg) !important;
+            border: 1px solid var(--border-subtle) !important;
+            border-radius: 8px !important;
+            padding: 3px !important;
+            display: flex !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }}
+
+        div[data-testid="stSegmentedControl"] [role="radiogroup"] {{
+            display: flex !important;
+            width: 100% !important;
+            gap: 2px !important;
+        }}
+
+        div[data-testid="stSegmentedControl"] button {{
+            flex: 1 1 0% !important;
+            border: none !important;
+            border-radius: 6px !important;
+            padding: 4px 10px !important;
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.05em !important;
+            text-transform: uppercase !important;
+            color: var(--toggle-inactive-text) !important;
+            background: transparent !important;
+            cursor: pointer !important;
+            transition: all 200ms ease !important;
+            text-align: center !important;
+            justify-content: center !important;
+            min-height: 28px !important;
+            height: 28px !important;
+        }}
+
+        div[data-testid="stSegmentedControl"] button:hover {{
+            color: var(--text-primary) !important;
+            background-color: var(--bg-hover) !important;
+        }}
+
+        div[data-testid="stSegmentedControl"] button[aria-checked="true"],
+        div[data-testid="stSegmentedControl"] button[data-checked="true"] {{
+            background-color: var(--toggle-active-bg) !important;
+            color: var(--toggle-active-text) !important;
+            font-weight: 700 !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12) !important;
+        }}
+
+        /* Sidebar Product Navigation Rail */
+        section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            text-align: left !important;
+            justify-content: flex-start !important;
+            padding: 5px 10px !important;
+            font-size: 12px !important;
+            font-weight: 500 !important;
+            color: var(--text-secondary) !important;
+            border-radius: 6px !important;
+            min-height: 30px !important;
+            height: 30px !important;
+            margin: 1px 0 !important;
+            transition: background-color 180ms ease, color 180ms ease !important;
+        }}
+
+        section[data-testid="stSidebar"] div[data-testid="stButton"] button:hover {{
+            background-color: var(--bg-hover) !important;
+            color: var(--text-primary) !important;
+        }}
+
+        section[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="primary"] {{
+            background-color: var(--nav-btn-active-bg) !important;
+            color: var(--nav-btn-active-text) !important;
+            font-weight: 600 !important;
+            border-left: 3px solid var(--primary-accent) !important;
+            border-radius: 0 6px 6px 0 !important;
+        }}
+
+        /* Flagship DeRule Workflow Pipeline Bar */
+        .derule-pipeline-bar {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            padding: 10px 18px;
+            margin-bottom: 16px;
+            box-shadow: var(--card-shadow);
+            overflow-x: auto;
+        }}
+
+        .derule-pipeline-step {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }}
+
+        .derule-pipeline-step.active {{
+            color: var(--primary-accent);
+            font-weight: 700;
+        }}
+
+        .derule-pipeline-step.completed {{
+            color: #16a34a;
+        }}
+
+        .derule-pipeline-arrow {{
+            color: var(--border-strong);
+            font-size: 12px;
+            margin: 0 8px;
+        }}
+
+        /* Sidebar Logo Container */
+        .derule-sidebar-brand {{
+            padding: 4px 0 14px 0;
+            margin-bottom: 12px;
+            border-bottom: 1px solid var(--border-subtle);
+        }}
+        .derule-sidebar-brand img {{
+            max-width: 140px;
+            height: auto;
+            object-fit: contain;
+            display: block;
+            margin-bottom: 8px;
         }}
         </style>
     """

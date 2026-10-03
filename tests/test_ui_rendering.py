@@ -48,12 +48,12 @@ def test_theme_mode_toggle_between_light_and_dark() -> None:
     assert at.session_state["theme_mode"] == "light"
 
     # Toggle to Dark mode via UI control
-    at.sidebar.radio(key="sidebar_theme_selector").set_value("Dark").run()
+    at.sidebar.segmented_control(key="sidebar_theme_selector").set_value("Dark").run()
     assert not at.exception
     assert at.session_state["theme_mode"] == "dark"
 
     # Toggle back to Light mode via UI control
-    at.sidebar.radio(key="sidebar_theme_selector").set_value("Light").run()
+    at.sidebar.segmented_control(key="sidebar_theme_selector").set_value("Light").run()
     assert not at.exception
     assert at.session_state["theme_mode"] == "light"
 

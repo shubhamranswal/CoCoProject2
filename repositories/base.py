@@ -156,6 +156,17 @@ class ReliabilityRepository(ABC):
     @abstractmethod
     def get_latest_failure_risk(self, machine_id: str) -> Optional[FailureRisk]: ...
 
+    def get_latest_failure_risks(
+        self, machine_ids: Optional[List[str]] = None
+    ) -> Dict[str, FailureRisk]:
+        """Fetch latest failure risk per machine in a consolidated batch query."""
+        risks = {}
+        for m_id in (machine_ids or []):
+            r = self.get_latest_failure_risk(m_id)
+            if r:
+                risks[m_id] = r
+        return risks
+
     @abstractmethod
     def save_health_assessment(self, assessment: HealthAssessment) -> None: ...
 
@@ -167,6 +178,17 @@ class ReliabilityRepository(ABC):
 
     @abstractmethod
     def get_latest_prediction(self, machine_id: str) -> Optional[MLFailurePrediction]: ...
+
+    def get_latest_predictions(
+        self, machine_ids: Optional[List[str]] = None
+    ) -> Dict[str, MLFailurePrediction]:
+        """Fetch latest ML failure prediction per machine in a consolidated batch query."""
+        preds = {}
+        for m_id in (machine_ids or []):
+            p = self.get_latest_prediction(m_id)
+            if p:
+                preds[m_id] = p
+        return preds
 
     @abstractmethod
     def list_predictions(

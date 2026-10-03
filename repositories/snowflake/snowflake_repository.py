@@ -86,15 +86,15 @@ from repositories.snowflake.connection import SnowflakeConnectionManager
 
 def _canonical_to_ml_prediction(cp: CanonicalPrediction) -> MLFailurePrediction:
     """Map canonical CORE.PREDICTION record into domain MLFailurePrediction."""
-    comp_id = cp.suspected_component_id or ""
-    if "BRG" in comp_id:
+    comp_id = (cp.suspected_component_id or "").upper()
+    if "BRG" in comp_id or "BEARING" in comp_id:
         fmode = FailureMode.BEARING_DEGRADATION
-    elif "MTR" in comp_id:
-        fmode = FailureMode.MOTOR_OVERHEAT
+    elif "MTR" in comp_id or "MOTOR" in comp_id:
+        fmode = FailureMode.MOTOR_OVERHEATING
     elif "HYD" in comp_id:
-        fmode = FailureMode.HYDRAULIC_LOSS
-    elif "GRB" in comp_id:
-        fmode = FailureMode.GEARBOX_WEAR
+        fmode = FailureMode.MECHANICAL_WEAR
+    elif "GRB" in comp_id or "GEAR" in comp_id:
+        fmode = FailureMode.MECHANICAL_WEAR
     else:
         fmode = FailureMode.BEARING_DEGRADATION
 
@@ -1097,6 +1097,46 @@ class SnowflakeRepository(
             cur.close()
             conn.close()
 
+    def get_latest_failure_risks(
+        self, machine_ids: Optional[List[str]] = None
+    ) -> Dict[str, FailureRisk]:
+        """Fetch latest failure risk per machine in a single batch query."""
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT prediction_id, machine_id, 'BEARING_DEGRADATION', failure_prob,
+                       horizon_days * 24, model_name, scored_ts, 0.95
+                FROM (
+                    SELECT prediction_id, machine_id, failure_prob, horizon_days, model_name, scored_ts,
+                           ROW_NUMBER() OVER (PARTITION BY machine_id ORDER BY scored_ts DESC) as rn
+                    FROM COCO_FACTORY.CORE.PREDICTION
+            """
+            params: list = []
+            if machine_ids:
+                placeholders = ", ".join(["%s"] * len(machine_ids))
+                query += f" WHERE machine_id IN ({placeholders})"
+                params.extend(machine_ids)
+            query += ") WHERE rn = 1"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            results: Dict[str, FailureRisk] = {}
+            for r in rows:
+                results[r[1]] = FailureRisk(
+                    risk_id=r[0],
+                    machine_id=r[1],
+                    failure_mode=FailureMode(r[2]),
+                    risk_score=float(r[3]),
+                    prediction_horizon_hours=int(r[4]),
+                    model_version=r[5],
+                    prediction_timestamp=r[6],
+                    confidence=float(r[7]),
+                )
+            return results
+        finally:
+            cur.close()
+            conn.close()
+
     def save_health_assessment(self, assessment: HealthAssessment) -> None:
         """Explicitly reject unsupported direct health assessment write on Snowflake backend.
 
@@ -1223,6 +1263,47 @@ class SnowflakeRepository(
     def get_latest_prediction(self, machine_id: str) -> Optional[MLFailurePrediction]:
         preds = self.list_predictions(machine_id=machine_id, limit=1)
         return preds[0] if preds else None
+
+    def get_latest_predictions(
+        self, machine_ids: Optional[List[str]] = None
+    ) -> Dict[str, MLFailurePrediction]:
+        """Fetch latest ML prediction per machine in a single batch query."""
+        conn = self.conn_mgr.get_connection()
+        cur = conn.cursor()
+        try:
+            query = """
+                SELECT prediction_id, scored_ts, machine_id, suspected_component_id, model_name, horizon_days, failure_prob, risk_level, top_features
+                FROM (
+                    SELECT prediction_id, scored_ts, machine_id, suspected_component_id, model_name, horizon_days, failure_prob, risk_level, top_features,
+                           ROW_NUMBER() OVER (PARTITION BY machine_id ORDER BY scored_ts DESC) as rn
+                    FROM COCO_FACTORY.CORE.PREDICTION
+            """
+            params: list = []
+            if machine_ids:
+                placeholders = ", ".join(["%s"] * len(machine_ids))
+                query += f" WHERE machine_id IN ({placeholders})"
+                params.extend(machine_ids)
+            query += ") WHERE rn = 1"
+            cur.execute(query, tuple(params) if params else None)
+            rows = cur.fetchall()
+            results: Dict[str, MLFailurePrediction] = {}
+            for r in rows:
+                cp = CanonicalPrediction(
+                    prediction_id=r[0],
+                    scored_ts=r[1],
+                    machine_id=r[2],
+                    suspected_component_id=r[3],
+                    model_name=r[4],
+                    horizon_days=r[5],
+                    failure_prob=float(r[6]),
+                    risk_level=r[7],
+                    top_features=r[8],
+                )
+                results[r[2]] = _canonical_to_ml_prediction(cp)
+            return results
+        finally:
+            cur.close()
+            conn.close()
 
     def list_predictions(self, machine_id: Optional[str] = None, limit: int = 50) -> List[MLFailurePrediction]:
         cpreds = self.list_canonical_predictions(machine_id=machine_id, limit=limit)

@@ -126,15 +126,15 @@ def _safe_dt(dt: Optional[datetime]) -> datetime:
 
 def _canonical_to_ml_prediction(cp: CanonicalPrediction) -> MLFailurePrediction:
     """Map canonical CORE.PREDICTION record into domain MLFailurePrediction."""
-    comp_id = cp.suspected_component_id or ""
-    if "BRG" in comp_id:
+    comp_id = (cp.suspected_component_id or "").upper()
+    if "BRG" in comp_id or "BEARING" in comp_id:
         fmode = FailureMode.BEARING_DEGRADATION
-    elif "MTR" in comp_id:
-        fmode = FailureMode.MOTOR_OVERHEAT
+    elif "MTR" in comp_id or "MOTOR" in comp_id:
+        fmode = FailureMode.MOTOR_OVERHEATING
     elif "HYD" in comp_id:
-        fmode = FailureMode.HYDRAULIC_LOSS
-    elif "GRB" in comp_id:
-        fmode = FailureMode.GEARBOX_WEAR
+        fmode = FailureMode.MECHANICAL_WEAR
+    elif "GRB" in comp_id or "GEAR" in comp_id:
+        fmode = FailureMode.MECHANICAL_WEAR
     else:
         fmode = FailureMode.BEARING_DEGRADATION
 
@@ -557,6 +557,18 @@ class InMemoryRepository(
                 return None
             return sorted(items, key=lambda r: r.prediction_timestamp, reverse=True)[0]
 
+    def get_latest_failure_risks(
+        self, machine_ids: Optional[List[str]] = None
+    ) -> Dict[str, FailureRisk]:
+        with self._lock:
+            target_ids = machine_ids if machine_ids is not None else list(self._failure_risks.keys())
+            results = {}
+            for m_id in target_ids:
+                items = self._failure_risks.get(m_id, [])
+                if items:
+                    results[m_id] = sorted(items, key=lambda r: r.prediction_timestamp, reverse=True)[0]
+            return results
+
     def save_health_assessment(self, assessment: HealthAssessment) -> None:
         with self._lock:
             self._health_assessments[assessment.machine_id] = assessment
@@ -578,6 +590,18 @@ class InMemoryRepository(
             if cpreds:
                 return _canonical_to_ml_prediction(cpreds[0])
             return None
+
+    def get_latest_predictions(
+        self, machine_ids: Optional[List[str]] = None
+    ) -> Dict[str, MLFailurePrediction]:
+        with self._lock:
+            target_ids = machine_ids if machine_ids is not None else list(set(list(self._predictions.keys()) + [cp.machine_id for cp in self._canonical_predictions]))
+            results = {}
+            for m_id in target_ids:
+                pred = self.get_latest_prediction(m_id)
+                if pred:
+                    results[m_id] = pred
+            return results
 
     def list_predictions(
         self, machine_id: Optional[str] = None, limit: int = 50

@@ -28,11 +28,11 @@ def render_header(
         st.markdown(
             """
             <div>
-                <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em;">
-                    FACTORY RELIABILITY COMMAND CENTER
+                <div style="font-size: 16px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; line-height: 1.1;">
+                    DeRule
                 </div>
-                <div style="font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em; text-transform: uppercase;">
-                    Autonomous Reliability & Closed-Loop Operations
+                <div style="font-size: 10px; font-weight: 600; color: var(--primary-accent); letter-spacing: 0.05em; text-transform: uppercase; margin-top: 2px;">
+                    Detect. Investigate. Act
                 </div>
             </div>
             """,
@@ -44,10 +44,10 @@ def render_header(
         line_val = st.session_state.get("selected_line_id", "ALL")
         st.markdown(
             f"""
-            <div style="font-size: 12px; color: var(--text-secondary); padding-top: 4px;">
-                <b>Plant 01</b> (Pune Packaging) &nbsp;|&nbsp; Line: <b>{line_val}</b>
+            <div style="font-size: 11px; color: var(--text-secondary); padding-top: 2px;">
+                <b>Plant 01</b> &nbsp;|&nbsp; Line: <b>{line_val}</b>
             </div>
-            <div style="font-size: 11px; color: var(--text-muted);">
+            <div style="font-size: 10px; color: var(--text-muted);">
                 Operator: <code>{st.session_state.get("active_user", "operator.shubham")}</code>
             </div>
             """,
@@ -58,7 +58,7 @@ def render_header(
         search_query = st.text_input(
             "Global Search",
             value=st.session_state.get("search_query", ""),
-            placeholder="Search M204, bearing, alert, WO-...",
+            placeholder="Search machines, alerts, investigations, work orders...",
             label_visibility="collapsed",
             key="global_search_input",
         )
