@@ -232,60 +232,64 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
 
     # 2. Hypothesis Comparison
     st.markdown(
-        """
-        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">
-            Hypothesis Evaluation & Differential Diagnosis
-        </div>
-        """,
+        '<div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">'
+        'Hypothesis Evaluation & Differential Diagnosis'
+        '</div>',
         unsafe_allow_html=True,
     )
     if hypotheses:
         h_cols = st.columns(len(hypotheses))
         for col, h in zip(h_cols, hypotheses):
             with col:
-                is_supported = (h.status == "SUPPORTED")
+                h_status_val = _clean_semantic_text(getattr(h.status, "value", h.status))
+                is_supported = (h_status_val == "SUPPORTED")
                 badge_type = "badge-critical" if is_supported else "badge-neutral"
                 border_col = "#dc2626" if is_supported else "var(--border-subtle)"
+                conf_val = f"{h.confidence * 100:.0f}% conf" if h.confidence is not None else "--"
 
-                sup_badges = "".join([f'<span class="badge badge-healthy" style="margin-right: 4px; font-size: 10px;">SUPPORTS: {eid}</span>' for eid in (h.supporting_evidence_ids or [])])
-                con_badges = "".join([f'<span class="badge badge-critical" style="margin-right: 4px; font-size: 10px;">CONTRADICTS: {eid}</span>' for eid in (h.contradicting_evidence_ids or [])])
+                hyp_name_clean = html.escape(_clean_semantic_text(h.hypothesis_name))
 
-                evidence_markup = ""
-                if sup_badges or con_badges:
-                    evidence_markup = f"""
-                    <div style="margin-top: 8px; border-top: 1px solid var(--border-subtle); padding-top: 6px;">
-                        <span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Evidence Grounding:</span>
-                        <div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">{sup_badges}{con_badges}</div>
-                    </div>
-                    """
-
-                statement_markup = ""
-                if getattr(h, "statement", None):
-                    statement_markup = f"""
-                    <div style="font-size: 12px; color: var(--text-primary); font-weight: 500; margin-top: 4px;">
-                        {h.statement}
-                    </div>
-                    """
-
-                st.markdown(
-                    f"""
-                    <div class="ind-card" style="border: 1px solid {border_col};">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="badge {badge_type}">{h.status}</span>
-                            <span style="font-size: 11px; color: var(--text-muted);">{h.confidence * 100:.0f}% conf</span>
-                        </div>
-                        <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
-                            {h.hypothesis_name}
-                        </div>
-                        {statement_markup}
-                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">
-                            {h.rationale}
-                        </div>
-                        {evidence_markup}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
+                statement_clean = _clean_semantic_text(getattr(h, "statement", None))
+                statement_html = (
+                    f'<div style="font-size: 12px; color: var(--text-primary); font-weight: 500; margin-top: 4px;">{html.escape(statement_clean)}</div>'
+                    if statement_clean else ""
                 )
+
+                rationale_clean = _clean_semantic_text(getattr(h, "rationale", None))
+                rationale_html = (
+                    f'<div style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">{html.escape(rationale_clean)}</div>'
+                    if rationale_clean else ""
+                )
+
+                sup_ids = [_clean_semantic_text(eid) for eid in (h.supporting_evidence_ids or []) if _clean_semantic_text(eid)]
+                con_ids = [_clean_semantic_text(eid) for eid in (h.contradicting_evidence_ids or []) if _clean_semantic_text(eid)]
+                sup_badges = "".join([f'<span class="badge badge-healthy" style="margin-right: 4px; font-size: 10px;">SUPPORTS: {html.escape(eid)}</span>' for eid in sup_ids])
+                con_badges = "".join([f'<span class="badge badge-critical" style="margin-right: 4px; font-size: 10px;">CONTRADICTS: {html.escape(eid)}</span>' for eid in con_ids])
+
+                evidence_html = ""
+                if sup_badges or con_badges:
+                    evidence_html = (
+                        f'<div style="margin-top: 8px; border-top: 1px solid var(--border-subtle); padding-top: 6px;">'
+                        f'<span style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Evidence Grounding:</span>'
+                        f'<div style="margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px;">{sup_badges}{con_badges}</div>'
+                        f'</div>'
+                    )
+
+                card_html = (
+                    f'<div class="ind-card" style="border: 1px solid {border_col};">'
+                    f'<div style="display: flex; justify-content: space-between; align-items: center;">'
+                    f'<span class="badge {badge_type}">{html.escape(h_status_val)}</span>'
+                    f'<span style="font-size: 11px; color: var(--text-muted);">{conf_val}</span>'
+                    f'</div>'
+                    f'<div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">'
+                    f'{hyp_name_clean}'
+                    f'</div>'
+                    f'{statement_html}'
+                    f'{rationale_html}'
+                    f'{evidence_html}'
+                    f'</div>'
+                )
+                st.markdown(card_html, unsafe_allow_html=True)
     else:
         st.info("No hypothesis records attached.")
 
@@ -294,11 +298,9 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
     # 3. Finding Panel (Multi-Finding: Root Cause, Operational Impact, Inventory Risk)
     if findings:
         st.markdown(
-            f"""
-            <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">
-                Synthesized Investigation Findings ({len(findings)} Findings)
-            </div>
-            """,
+            f'<div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">'
+            f'Synthesized Investigation Findings ({len(findings)} Findings)'
+            f'</div>',
             unsafe_allow_html=True,
         )
         for idx, f in enumerate(findings):
@@ -307,32 +309,33 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
             title_prefix = "ROOT CAUSE FINDING" if is_primary else f"FINDING #{idx + 1}"
             border_style = "border-left: 4px solid #dc2626;" if is_primary else "border-left: 4px solid var(--primary-accent);"
 
-            statement_html = ""
-            if getattr(f, "statement", None):
-                statement_html = f"<div style='font-size: 12px; color: var(--text-secondary); margin-top: 4px; font-style: italic;'>{f.statement}</div>"
+            conf_display = f"{f.confidence * 100:.0f}%" if f.confidence is not None else "--"
+            stmt_clean = _clean_semantic_text(getattr(f, "statement", None))
+            statement_html = (
+                f"<div style='font-size: 12px; color: var(--text-secondary); margin-top: 4px; font-style: italic;'>{html.escape(stmt_clean)}</div>"
+                if stmt_clean else ""
+            )
 
-            refs = getattr(f, "evidence_refs", []) or getattr(f, "supporting_evidence_ids", [])
-            refs_badges = "".join([f"<span class='badge badge-neutral' style='font-size: 10px; margin-right: 4px;'>{r}</span>" for r in refs])
+            refs = getattr(f, "evidence_refs", []) or getattr(f, "supporting_evidence_ids", []) or []
+            refs_badges = "".join([f"<span class='badge badge-neutral' style='font-size: 10px; margin-right: 4px;'>{html.escape(_clean_semantic_text(r))}</span>" for r in refs if _clean_semantic_text(r)])
             refs_html = f"<div style='margin-top: 6px;'><span style='font-size: 10px; color: var(--text-muted); text-transform: uppercase;'>Evidence Grounding: </span>{refs_badges}</div>" if refs_badges else ""
 
-            st.markdown(
-                f"""
-                <div class="{card_class}" style="{border_style} margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span style="font-size: 11px; font-weight: 700; color: #dc2626; text-transform: uppercase; letter-spacing: 0.05em;">
-                            {title_prefix} (CONFIDENCE: {f.confidence * 100:.0f}%)
-                        </span>
-                        <span class="badge badge-neutral">ID: {f.finding_id}</span>
-                    </div>
-                    <div style="font-size: 15px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
-                        {f.summary}
-                    </div>
-                    {statement_html}
-                    {refs_html}
-                </div>
-                """,
-                unsafe_allow_html=True,
+            finding_card_html = (
+                f'<div class="{card_class}" style="{border_style} margin-bottom: 12px;">'
+                f'<div style="display: flex; justify-content: space-between; align-items: center;">'
+                f'<span style="font-size: 11px; font-weight: 700; color: #dc2626; text-transform: uppercase; letter-spacing: 0.05em;">'
+                f'{title_prefix} (CONFIDENCE: {conf_display})'
+                f'</span>'
+                f'<span class="badge badge-neutral">ID: {html.escape(_clean_semantic_text(f.finding_id))}</span>'
+                f'</div>'
+                f'<div style="font-size: 15px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">'
+                f'{html.escape(_clean_semantic_text(f.summary))}'
+                f'</div>'
+                f'{statement_html}'
+                f'{refs_html}'
+                f'</div>'
             )
+            st.markdown(finding_card_html, unsafe_allow_html=True)
 
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
