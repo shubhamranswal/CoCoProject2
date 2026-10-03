@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 from config import get_config
 from data.scenarios.m204_scenario import M204ScenarioEngine, ScenarioPhase
+from domain.exceptions import UnsupportedOperationError
 from domain.enums import (
     AlertStatus,
     ApprovalStatus,
@@ -461,6 +462,11 @@ class CommandCenterFacade:
 
     def reset_demo(self, seed_degradation: bool = True) -> None:
         """Reset repository to healthy baseline reference state, optionally re-seeding M204 degradation."""
+        if self.backend_mode == "snowflake" or not hasattr(self.repo, "reset_state"):
+            raise UnsupportedOperationError(
+                "Reset Demo is unsupported for the Snowflake backend. "
+                "Snowflake is the authoritative production system of record and cannot be mutated by demo reset."
+            )
         self.repo.reset_state()
         if not getattr(self.repo, "is_derived_health", False):
             self.repo.update_machine_health("M204", HealthStatus.HEALTHY, MachineState.RUNNING)
@@ -1034,7 +1040,7 @@ class CommandCenterFacade:
                 results.append({
                     "type": "MACHINE",
                     "id": m.machine_id,
-                    "title": f"Machine {m.machine_id} — {m.name}",
+                    "title": f"Machine {m.machine_id} - {m.name}",
                     "subtitle": f"Line: {m.line_id} | Health: {m.health_status.value}",
                     "nav_view": "Assets",
                     "nav_param": {"machine_id": m.machine_id},
@@ -1046,7 +1052,7 @@ class CommandCenterFacade:
                 results.append({
                     "type": "ALERT",
                     "id": a.alert_id,
-                    "title": f"Alert {a.alert_id} — {a.trigger_reason}",
+                    "title": f"Alert {a.alert_id} - {a.trigger_reason}",
                     "subtitle": f"Machine: {a.machine_id} | Severity: {a.severity.value}",
                     "nav_view": "Command Center",
                     "nav_param": {},
@@ -1070,7 +1076,7 @@ class CommandCenterFacade:
                 results.append({
                     "type": "WORK_ORDER",
                     "id": wo.work_order_id,
-                    "title": f"Work Order {wo.work_order_id} — {wo.title}",
+                    "title": f"Work Order {wo.work_order_id} - {wo.title}",
                     "subtitle": f"Machine: {wo.machine_id} | Status: {wo.status.value}",
                     "nav_view": "Work Orders",
                     "nav_param": {"work_order_id": wo.work_order_id},

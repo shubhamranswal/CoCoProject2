@@ -469,7 +469,7 @@ class TestCanonicalInvestigationViewModernization:
         # Assertion 1: Dynamic asset name, machine ID, status, confidence, trigger info
         assert "ASSET: M21" in html
         assert "Grinding Machine 21" in html
-        assert "Reliability Investigation — INV-M21-20261002-001" in html
+        assert "Reliability Investigation - INV-M21-20261002-001" in html
         assert "BEARING_DEGRADATION" in html
         assert "95%" in html  # Confidence
         assert "PREDICTION" in html

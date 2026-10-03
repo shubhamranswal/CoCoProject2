@@ -1,4 +1,4 @@
-"""Command Center View — Primary Hero Operational Screen.
+"""Command Center View - Primary Hero Operational Screen.
 
 Follows Section 12 of DeRule Product Specification:
 - Header: DeRule Command Center, "Detect. Investigate. Act", Environment, System Status

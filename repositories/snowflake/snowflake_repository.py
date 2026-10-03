@@ -13,7 +13,18 @@ from datetime import date, datetime, timezone
 import json
 
 from domain.exceptions import UnsupportedOperationError
-from domain.enums import AlertStatus, ApprovalStatus, HealthStatus, MachineState, WorkOrderStatus, SensorType, Severity, FailureMode, VerificationStatus
+from domain.enums import (
+    AlertStatus,
+    ApprovalStatus,
+    FailureMode,
+    HealthStatus,
+    MachineState,
+    Priority,
+    SensorType,
+    Severity,
+    VerificationStatus,
+    WorkOrderStatus,
+)
 from domain.models import (
     Alert,
     Anomaly,
@@ -5127,4 +5138,3 @@ class SnowflakeRepository(
         finally:
             cur.close()
             conn.close()
-

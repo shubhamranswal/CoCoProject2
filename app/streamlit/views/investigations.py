@@ -58,7 +58,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
             "Select Investigation Case:",
             inv_ids,
             index=inv_ids.index(cur_inv_id) if cur_inv_id in inv_ids else 0,
-            format_func=lambda x: f"{x} — Machine {facade.get_investigation_detail(x)['investigation'].machine_id if facade.get_investigation_detail(x) else x}",
+            format_func=lambda x: f"{x} - Machine {facade.get_investigation_detail(x)['investigation'].machine_id if facade.get_investigation_detail(x) else x}",
             key="inv_case_selector",
         )
         if chosen_inv_id != cur_inv_id:
@@ -131,7 +131,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
                     <span class="badge badge-critical" style="margin-left: 6px;">{inv.failure_mode.value}</span>
                     <span class="badge badge-neutral" style="margin-left: 6px;">COMPONENT: {component_name}</span>
                     <div style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 6px;">
-                        Reliability Investigation — {inv.investigation_id}
+                        Reliability Investigation - {inv.investigation_id}
                     </div>
                     <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
                         Target Equipment: <b>{inv.machine_id} ({machine_name})</b> &nbsp;|&nbsp; Trigger: <b>{trigger_str}</b> (<code>{trigger_ref}</code>) &nbsp;|&nbsp; Completed: <b>{completed_str}</b>
@@ -428,7 +428,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
             if is_proposed and action_proposal.status == "PENDING_APPROVAL":
                 status_badge = '<span class="badge badge-warning" style="font-weight: 700;">PENDING HUMAN APPROVAL</span>'
             elif is_proposed and action_proposal.status == "APPROVED":
-                status_badge = '<span class="badge badge-healthy" style="font-weight: 700;">APPROVED — READY FOR SEPARATE GOVERNED EXECUTION</span>'
+                status_badge = '<span class="badge badge-healthy" style="font-weight: 700;">APPROVED - READY FOR SEPARATE GOVERNED EXECUTION</span>'
             elif is_proposed and action_proposal.status == "REJECTED":
                 status_badge = '<span class="badge badge-critical" style="font-weight: 700;">PROPOSAL REJECTED</span>'
             else:

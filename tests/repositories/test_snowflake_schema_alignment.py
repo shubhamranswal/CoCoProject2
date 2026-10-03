@@ -936,3 +936,25 @@ def test_analytics_ddl_case_insensitive_critical_matching():
         "Expected case-insensitive UPPER(severity) = 'CRITICAL' in 30_analytics_foundation.sql"
     )
 
+
+def test_list_action_proposals_priority_hydration(repo: SnowflakeRepository, mock_conn):
+    """Verify list_action_proposals hydrates ActionProposal without NameError and correctly maps Priority."""
+    _, cur = mock_conn
+    now = datetime(2026, 10, 2, 14, 0, tzinfo=timezone.utc)
+
+    # Mock rows with LOW, MEDIUM, HIGH, CRITICAL, and unknown fallback
+    cur.fetchall.return_value = [
+        ("PROP-001", "INV-001", "REC-001", "M21", "C-M21-BRG", "INSPECT", "LOW", "LOW", "Check", "{}", "PROPOSED", "IDEM-1", None, True, now, now),
+        ("PROP-002", "INV-001", "REC-002", "M21", "C-M21-BRG", "INSPECT", "MEDIUM", "MED", "Check", "{}", "PROPOSED", "IDEM-2", None, True, now, now),
+        ("PROP-003", "INV-001", "REC-003", "M21", "C-M21-BRG", "INSPECT", "HIGH", "HIGH", "Check", "{}", "PROPOSED", "IDEM-3", None, True, now, now),
+        ("PROP-004", "INV-001", "REC-004", "M21", "C-M21-BRG", "INSPECT", "CRITICAL", "CRIT", "Check", "{}", "PROPOSED", "IDEM-4", None, True, now, now),
+        ("PROP-005", "INV-001", "REC-005", "M21", "C-M21-BRG", "INSPECT", "UNKNOWN", "HIGH", "Check", "{}", "PROPOSED", "IDEM-5", None, True, now, now),
+    ]
+
+    proposals = repo.list_action_proposals(machine_id="M21")
+    assert len(proposals) == 5
+    assert proposals[0].priority == Priority.LOW
+    assert proposals[1].priority == Priority.MEDIUM
+    assert proposals[2].priority == Priority.HIGH
+    assert proposals[3].priority == Priority.CRITICAL
+    assert proposals[4].priority == Priority.HIGH  # Fallback for unknown

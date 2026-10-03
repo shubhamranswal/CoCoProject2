@@ -194,7 +194,13 @@ def render_sidebar(
                 st.success("Investigation agent completed analysis.")
                 st.rerun()
 
-            if st.button("Reset Environment to Baseline", width="stretch", help="Restore clean baseline state"):
+            is_snowflake = (backend_mode == "snowflake")
+            if st.button(
+                "Reset Environment to Baseline",
+                width="stretch",
+                disabled=is_snowflake,
+                help="Reset is disabled for authoritative Snowflake backend" if is_snowflake else "Restore clean baseline state",
+            ):
                 on_reset_demo()
                 st.session_state.scenario_stage = "INITIALIZED"
                 st.info("Environment reset to clean baseline.")

@@ -58,7 +58,7 @@ The model uses 29 canonical features derived from normalized hourly sensor readi
 | `rotational_speed` | Shaft Rotational Speed | `RPM` | `mean`, `max`, `slope7`, `rel30` |
 | `hydraulic_pressure` | System Hydraulic Pressure | `PRS` | `mean`, `max`, `slope7`, `rel30` |
 | `coolant_flow` | Coolant Circuit Flow | `FLW` | `mean`, `max`, `slope7`, `rel30` |
-| Maintenance | Maintenance Recency | — | `days_since_maint` |
+| Maintenance | Maintenance Recency | - | `days_since_maint` |
 
 ### Normalization & Transformation Rules
 1. **Warning Normalization**: $x_{\text{norm}} = \frac{x}{\text{warn\_threshold}}$ ($1.0$ represents operating at warning limit). For inverted metrics (e.g. pressure drop), $x_{\text{norm}} = \frac{\text{warn\_threshold}}{x}$.

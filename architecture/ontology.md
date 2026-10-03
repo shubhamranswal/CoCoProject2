@@ -3,7 +3,7 @@
 **Document:** `architecture/ontology.md`
 **Version:** 2.0
 **Status:** Authoritative Domain Ontology
-**Product:** DeRule — *Detect. Investigate. Act*
+**Product:** DeRule - *Detect. Investigate. Act*
 **Authoritative Platform:** Snowflake (`COCO_FACTORY`)
 **Application Tier:** Streamlit
 

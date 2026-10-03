@@ -125,16 +125,16 @@ Defined in `snowflake/ddl/coco_factory/50_knowledge_foundation.sql`:
 
 ### 4.2 `KNOWLEDGE.FAILURE_MODE_TAXONOMY`
 Standardized 10-code failure mode taxonomy seeded with deterministic MERGE:
-1. `BD-BRG` — Bearing Breakdown (Mechanical, Drive-End Bearing)
-2. `PD-VIB` — Predictive Bearing Degradation (Mechanical, Drive-End Bearing)
-3. `BD-MTR` — Motor Winding / Stator Failure (Electrical, Drive Motor)
-4. `PD-CUR` — Predictive Motor Current Overload (Electrical, Drive Motor)
-5. `BD-HYD` — Hydraulic Pressure Loss (Hydraulic, Hydraulic Pump)
-6. `BD-CLT` — Coolant Circulation Failure (Cooling, Coolant Pump)
-7. `BD-DRV` — Drive Belt / Gearbox Mechanical Wear (Mechanical, Gearbox/Drive Belt)
-8. `BD-ELC` — Electrical Panel / PLC Fault (Electrical, PLC/Electrical Panel)
-9. `BD-TLG` — Tooling Wear & Dimension Drift (Tooling, Tooling)
-10. `PM-ROUTINE` — Scheduled Preventive Maintenance (Preventive, General)
+1. `BD-BRG` - Bearing Breakdown (Mechanical, Drive-End Bearing)
+2. `PD-VIB` - Predictive Bearing Degradation (Mechanical, Drive-End Bearing)
+3. `BD-MTR` - Motor Winding / Stator Failure (Electrical, Drive Motor)
+4. `PD-CUR` - Predictive Motor Current Overload (Electrical, Drive Motor)
+5. `BD-HYD` - Hydraulic Pressure Loss (Hydraulic, Hydraulic Pump)
+6. `BD-CLT` - Coolant Circulation Failure (Cooling, Coolant Pump)
+7. `BD-DRV` - Drive Belt / Gearbox Mechanical Wear (Mechanical, Gearbox/Drive Belt)
+8. `BD-ELC` - Electrical Panel / PLC Fault (Electrical, PLC/Electrical Panel)
+9. `BD-TLG` - Tooling Wear & Dimension Drift (Tooling, Tooling)
+10. `PM-ROUTINE` - Scheduled Preventive Maintenance (Preventive, General)
 
 ### 4.3 Cortex Search Service Feed
 * `V_CORPUS_SEARCH_FEED` prepares the text search payload with document title, doc_type, category, failure_code, machine_type, component_type, and body text.

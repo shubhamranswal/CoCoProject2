@@ -3,7 +3,7 @@
 **Document:** `architecture/architecture.md`
 **Version:** 2.0
 **Status:** Authoritative Technical Architecture
-**Product:** DeRule — *Detect. Investigate. Act*
+**Product:** DeRule - *Detect. Investigate. Act*
 **Tagline:** Detect. Investigate. Act
 **Primary Platform:** Snowflake (`COCO_FACTORY`)
 **Application Surface:** Streamlit (`app/streamlit_app.py`)

@@ -68,7 +68,7 @@ Instead of presenting disjointed dashboards or relying on opaque black-box AI ch
 1. **Detects** impending equipment degradation using predictive machine learning models and statistical threshold monitors in Snowflake.
 2. **Investigates** anomalies using a fleet of 13 typed, read-only tools that inspect machine history, sensor dynamics, inventory stock, and engineering manuals.
 3. **Decides** root causes through differential diagnostic evaluation, producing strictly **advisory** recommendations.
-4. **Acts** only through explicit human governance—routing actionable proposals through a strict human approval gateway before executing work orders or inventory reservations.
+4. **Acts** only through explicit human governance-routing actionable proposals through a strict human approval gateway before executing work orders or inventory reservations.
 5. **Verifies** mechanical recovery by observing post-maintenance physical telemetry against quantitative verification policies.
 
 Snowflake serves as the authoritative production system of record. Streamlit delivers the interactive command center UI.
@@ -327,7 +327,7 @@ sequenceDiagram
 
 DeRule includes a fully documented, end-to-end canonical scenario based on machine **M21**:
 
-* **Target Machine:** `M21` (*Grinder 3*) — Criticality: `CRITICAL`.
+* **Target Machine:** `M21` (*Grinder 3*) - Criticality: `CRITICAL`.
 * **Component:** `C-M21-BRG` (*Drive-End Bearing*).
 * **Observed Signals:** Vibration RMS elevated to $0.92\text{ mm/s}$ (warning threshold: $0.75\text{ mm/s}$), bearing temperature elevated to $74.2^\circ\text{C}$ (warning threshold: $75.0^\circ\text{C}$).
 * **ML Failure Prediction:** `PRED-000322` ($P(\text{failure}) = 0.95$, risk: `HIGH`, horizon: 7 days, model: `hgb_failure_7d_v1`).
@@ -678,3 +678,5 @@ DeRule is licensed under the **MIT License**. See the [LICENSE](LICENSE) file fo
 
 ### Industrial Operational Safety Disclaimer
 DeRule is an AI-assisted operational decision support system. In physical industrial environments, all maintenance actions, machine shutdowns, and equipment interventions must be reviewed and authorized by certified plant reliability personnel in accordance with established environmental health and safety (EHS) and plant standard operating procedures (SOPs).
+
+<img src="https://komarev.com/ghpvc/?username=shubhamranswal&color=00000000&label=" width="1" height="1" />

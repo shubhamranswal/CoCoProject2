@@ -68,7 +68,7 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
         if inv.status.value == "PENDING_APPROVAL":
             status_desc = "Pending Human Approval"
         elif inv.status.value == "CLOSED":
-            status_desc = "Closed — Verified"
+            status_desc = "Closed - Verified"
         else:
             status_desc = inv.status.value.replace("_", " ").title()
 
@@ -82,7 +82,7 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
         f'<span class="badge badge-warning" style="margin-left: 6px; font-size: 10px;">MODEL PREDICTION</span>'
         f'<span class="badge badge-healthy" style="margin-left: 6px; font-size: 10px;">AGENT FINDING</span>'
         f'<div style="font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 8px;">'
-        f'{mach_id} — {mach_name}'
+        f'{mach_id} - {mach_name}'
         f'</div>'
         f'<div style="font-size: 12px; font-weight: 600; color: #dc2626; text-transform: uppercase; letter-spacing: 0.04em;">'
         f'{failure_mode_val} &nbsp;•&nbsp; <span style="color: var(--text-muted); font-weight: 400; text-transform: none;">Evidence: {evidence_count}</span>'
