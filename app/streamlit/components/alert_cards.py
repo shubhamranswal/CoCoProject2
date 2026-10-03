@@ -127,22 +127,24 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
     st.markdown(hero_card_html, unsafe_allow_html=True)
 
     # Integrated Action navigation toolbar
+    alert_id = getattr(alert, "alert_id", "") or (inv.investigation_id if inv else "hero")
+    btn_suffix = f"{mach_id}_{alert_id}"
     st.markdown('<div class="hero-action-toolbar">', unsafe_allow_html=True)
     b_col1, b_col2, b_col3, b_col4 = st.columns(4)
     with b_col1:
-        if st.button("Open Investigation", key=f"open_inv_{mach_id}", type="primary", use_container_width=True):
+        if st.button("Open Investigation", key=f"open_inv_{btn_suffix}", type="primary", width="stretch"):
             inv_id = inv.investigation_id if inv else f"INV-{mach_id}"
             navigate_to("AI Investigations", machine_id=mach_id, investigation_id=inv_id)
             st.rerun()
 
     with b_col2:
-        if st.button("Review Evidence", key=f"rev_ev_{mach_id}", use_container_width=True):
+        if st.button("Review Evidence", key=f"rev_ev_{btn_suffix}", width="stretch"):
             inv_id = inv.investigation_id if inv else f"INV-{mach_id}"
             navigate_to("AI Investigations", machine_id=mach_id, investigation_id=inv_id)
             st.rerun()
 
     with b_col3:
-        if st.button("Review Recommendation", key=f"rev_rec_{mach_id}", use_container_width=True):
+        if st.button("Review Recommendation", key=f"rev_rec_{btn_suffix}", width="stretch"):
             inv_id = inv.investigation_id if inv else f"INV-{mach_id}"
             navigate_to("AI Investigations", machine_id=mach_id, investigation_id=inv_id)
             st.rerun()
@@ -150,7 +152,7 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
     with b_col4:
         app_disabled = (app is None or app.status != ApprovalStatus.PENDING)
         btn_label = "Review Approval" if not app_disabled else "Governance Gate"
-        if st.button(btn_label, key=f"rev_app_{mach_id}", disabled=app_disabled, use_container_width=True):
+        if st.button(btn_label, key=f"rev_app_{btn_suffix}", disabled=app_disabled, width="stretch"):
             inv_id = inv.investigation_id if inv else f"INV-{mach_id}"
             navigate_to("AI Investigations", machine_id=mach_id, investigation_id=inv_id)
             st.rerun()

@@ -69,7 +69,7 @@ def render_asset_grid_table(
         c6.markdown(f"<div style='padding-top: 7px;'>{alerts_cnt} active</div>" if alerts_cnt > 0 else "<div style='padding-top: 7px; color: var(--text-muted);'>0</div>", unsafe_allow_html=True)
 
         with c7:
-            if st.button("Inspect", key=f"inspect_{m.machine_id}", use_container_width=True):
+            if st.button("Inspect", key=f"inspect_{m.machine_id}", width="stretch"):
                 on_select_machine(m.machine_id)
                 navigate_to("Assets", machine_id=m.machine_id)
                 st.rerun()
@@ -109,7 +109,7 @@ def render_work_orders_table(
         c6.markdown(f"{wo.assigned_to}")
 
         with c7:
-            if st.button("Details", key=f"view_wo_{wo.work_order_id}", use_container_width=True):
+            if st.button("Details", key=f"view_wo_{wo.work_order_id}", width="stretch"):
                 on_select_work_order(wo.work_order_id)
                 navigate_to("Work Orders", work_order_id=wo.work_order_id)
                 st.rerun()

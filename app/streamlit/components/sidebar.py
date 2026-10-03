@@ -111,7 +111,7 @@ def render_sidebar(
                     item,
                     key=f"nav_btn_{item}",
                     type=btn_type,
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     navigate_to(item)
                     st.rerun()
@@ -182,19 +182,19 @@ def render_sidebar(
 
             st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 8px 0;'/>", unsafe_allow_html=True)
             st.caption("Diagnostic Simulation:")
-            if st.button("Simulate Asset Wear Precursor", use_container_width=True, help="Trigger bearing wear telemetry"):
+            if st.button("Simulate Asset Wear Precursor", width="stretch", help="Trigger bearing wear telemetry"):
                 on_run_degradation()
                 st.session_state.scenario_stage = "INITIALIZED"
                 st.success("Telemetry precursor ingested.")
                 st.rerun()
 
-            if st.button("Trigger Investigation Agent", use_container_width=True, help="Dispatch agent on open alert"):
+            if st.button("Trigger Investigation Agent", width="stretch", help="Dispatch agent on open alert"):
                 on_run_investigation()
                 st.session_state.scenario_stage = "INVESTIGATED"
                 st.success("Investigation agent completed analysis.")
                 st.rerun()
 
-            if st.button("Reset Environment to Baseline", use_container_width=True, help="Restore clean baseline state"):
+            if st.button("Reset Environment to Baseline", width="stretch", help="Restore clean baseline state"):
                 on_reset_demo()
                 st.session_state.scenario_stage = "INITIALIZED"
                 st.info("Environment reset to clean baseline.")

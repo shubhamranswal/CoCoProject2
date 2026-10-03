@@ -76,7 +76,7 @@ def render_vibration_trend_chart(telemetry_data: Dict[str, Any]) -> None:
         height=320,
     )
     fig.update_layout(**layout)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_temperature_trend_chart(telemetry_data: Dict[str, Any]) -> None:
@@ -117,7 +117,7 @@ def render_temperature_trend_chart(telemetry_data: Dict[str, Any]) -> None:
         height=320,
     )
     fig.update_layout(**layout)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_signal_correlation_chart(telemetry_data: Dict[str, Any]) -> None:
@@ -167,4 +167,4 @@ def render_signal_correlation_chart(telemetry_data: Dict[str, Any]) -> None:
         showlegend=False,
     )
     fig.update_layout(**layout)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

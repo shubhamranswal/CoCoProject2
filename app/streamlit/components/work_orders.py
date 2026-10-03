@@ -66,7 +66,7 @@ def render_work_order_card(
         with st.expander("Technician On-Site Dispatch", expanded=True):
             st.caption("Simulate maintenance technician arriving on site and commencing LOTO:")
             tech_id = st.text_input("Technician Name / ID:", value="tech.marcus", key=f"tech_start_{work_order.work_order_id}")
-            if st.button("Start Maintenance (Set IN_PROGRESS)", type="primary", use_container_width=True):
+            if st.button("Start Maintenance (Set IN_PROGRESS)", type="primary", width="stretch"):
                 on_start_work(work_order.work_order_id, tech_id)
                 st.session_state.last_action_message = f"Work order {work_order.work_order_id} marked IN_PROGRESS by {tech_id}."
                 st.rerun()
@@ -88,7 +88,7 @@ def render_work_order_card(
                 "Shaft laser realignment to 0.03mm",
             ]
 
-            if st.button("Sign Off Work Order (Set COMPLETED)", type="primary", use_container_width=True):
+            if st.button("Sign Off Work Order (Set COMPLETED)", type="primary", width="stretch"):
                 on_complete_work(work_order.work_order_id, tech_id, duration_val, notes_val, actions_list)
                 st.session_state.last_action_message = f"Work order {work_order.work_order_id} signed off by {tech_id}. Ready for Verification."
                 st.rerun()

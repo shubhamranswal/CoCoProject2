@@ -244,7 +244,7 @@ def render_approval_panel(
             col_app, col_rej = st.columns([2, 1])
 
             with col_app:
-                if st.button("Confirm & Grant Approval", type="primary", use_container_width=True):
+                if st.button("Confirm & Grant Approval", type="primary", width="stretch"):
                     if not operator_name.strip():
                         st.error("Operator identity cannot be empty.")
                     else:
@@ -258,7 +258,7 @@ def render_approval_panel(
                             st.error(f"Approval failed: {exc}")
 
             with col_rej:
-                if st.button("Reject Proposal", type="secondary", use_container_width=True):
+                if st.button("Reject Proposal", type="secondary", width="stretch"):
                     if not operator_name.strip():
                         st.error("Operator identity cannot be empty.")
                     else:

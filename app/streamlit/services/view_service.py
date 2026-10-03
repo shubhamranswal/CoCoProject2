@@ -7,12 +7,16 @@ Follows AGENT.md & architecture/architecture.md:
 - Dispatches all mutations to governed backend services
 """
 
-from __future__ import annotations
-
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import logging
+import os
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 from config import get_config
 from data.scenarios.m204_scenario import M204ScenarioEngine, ScenarioPhase
@@ -24,6 +28,7 @@ from domain.enums import (
     InvestigationStatus,
     MachineState,
     Priority,
+    Severity,
     TriggerType,
     VerificationStatus,
     WorkOrderStatus,
@@ -45,6 +50,19 @@ from domain.models import (
     Verification,
     WorkOrder,
 )
+
+
+@dataclass
+class CommandCenterSnapshot:
+    """Coordinated view model snapshot for the operational Command Center."""
+    machines: List[Machine]
+    kpis: Dict[str, Any]
+    critical_events: List[Dict[str, Any]]
+    asset_grid: List[Dict[str, Any]]
+    investigations: List[Investigation]
+    captured_at: datetime
+    load_duration_ms: float
+    query_count: int
 from services.investigation_service import InvestigationService
 from tools.registry import M4InvestigationToolRegistry, create_m4_tool_registry
 from agents.reliability.coco_adapter import LiveCortexCoCoAdapter, DeterministicCoCoAdapter
@@ -117,9 +135,19 @@ class CommandCenterFacade:
         )
         self.scenario_engine = M204ScenarioEngine(machine_id="M204")
 
+        # Snapshot Cache for Coordinated Command Center Loading (10-second safe TTL)
+        self._snapshot_cache: Optional[CommandCenterSnapshot] = None
+        self._snapshot_cache_time: Optional[float] = None
+        self._snapshot_cache_ttl_seconds: float = 10.0
+
         # Auto-initialize baseline M204 alert in demo mode if unseeded
         if self.backend_mode == "in_memory" and repo is None:
             self._ensure_initial_state()
+
+    def invalidate_snapshot_cache(self) -> None:
+        """Invalidate cached Command Center snapshot to ensure fresh operational state."""
+        self._snapshot_cache = None
+        self._snapshot_cache_time = None
 
     def _ensure_initial_state(self) -> None:
         """Seed M204 active degradation state on startup so the UI renders the hero alert immediately."""
@@ -512,29 +540,137 @@ class CommandCenterFacade:
         dt_list = [dt] if dt else None
         return self.oee_service.calculate_oee(production_run=prod, downtime_events=dt_list)
 
-    def get_kpis(self) -> Dict[str, Any]:
-        """Compute top-level fleet KPIs deterministically from repository state."""
+    def get_command_center_snapshot(
+        self, line_id: Optional[str] = "ALL", force_refresh: bool = False
+    ) -> CommandCenterSnapshot:
+        """Fetch and assemble a consolidated Command Center operational snapshot in O(1) batch queries.
+
+        Consolidates fleet machines, alerts, work orders, approvals, failure risks, predictions,
+        and investigations into a single coordinated data retrieval pass.
+        Enforces a safe 10-second TTL to eliminate duplicate queries during UI interactions.
+        """
+        now = time.time()
+        if (
+            not force_refresh
+            and self._snapshot_cache is not None
+            and self._snapshot_cache_time is not None
+            and (now - self._snapshot_cache_time) < self._snapshot_cache_ttl_seconds
+        ):
+            cached = self._snapshot_cache
+            if line_id and line_id != "ALL":
+                filtered_grid = [
+                    item for item in cached.asset_grid
+                    if getattr(item["machine"], "line_id", None) == line_id
+                ]
+                return CommandCenterSnapshot(
+                    machines=cached.machines,
+                    kpis=cached.kpis,
+                    critical_events=cached.critical_events,
+                    asset_grid=filtered_grid,
+                    investigations=cached.investigations,
+                    captured_at=cached.captured_at,
+                    load_duration_ms=cached.load_duration_ms,
+                    query_count=0,
+                )
+            return cached
+
+        t0 = time.perf_counter()
+        q_count = 0
+
+        # 1. Fleet Machines
         machines = self.repo.list_machines()
+        q_count += 1
+        machines_map = {m.machine_id: m for m in machines}
+        all_m_ids = [m.machine_id for m in machines]
+
         critical_count = sum(1 for m in machines if m.health_status == HealthStatus.CRITICAL)
         warning_count = sum(1 for m in machines if m.health_status == HealthStatus.DEGRADING)
 
-        alerts = self.repo.list_alerts(status=AlertStatus.OPEN)
+        # 2. Active / Open Alerts
+        all_alerts = self.repo.list_alerts(status=AlertStatus.OPEN)
+        q_count += 1
+        alert_counts: Dict[str, int] = {}
+        for a in all_alerts:
+            if a.machine_id:
+                alert_counts[a.machine_id] = alert_counts.get(a.machine_id, 0) + 1
+
+        # 3. Open Work Orders
         work_orders = self.repo.list_work_orders()
-        open_wo = sum(1 for w in work_orders if w.status in (WorkOrderStatus.OPEN, WorkOrderStatus.ASSIGNED, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.APPROVED))
+        q_count += 1
+        open_wo = sum(
+            1 for w in work_orders
+            if getattr(w, "status", None) in (
+                WorkOrderStatus.OPEN,
+                WorkOrderStatus.ASSIGNED,
+                WorkOrderStatus.IN_PROGRESS,
+                WorkOrderStatus.APPROVED,
+            )
+        )
 
+        # 4. Pending Approvals
         approvals = self.approval_service.list_pending_approvals()
+        q_count += 1
+        apps_by_machine: Dict[str, Any] = {}
+        for app in approvals:
+            if app.machine_id and app.machine_id not in apps_by_machine:
+                apps_by_machine[app.machine_id] = app
 
-        # OEE calculation across plant
-        m204_oee = self.calculate_machine_oee("M204")
-        fleet_oee_val = m204_oee.oee if m204_oee else 0.885
-        fleet_avail_val = m204_oee.availability if m204_oee else 0.920
+        # 5. Batched Failure Risks
+        risks_map = self.repo.get_latest_failure_risks(all_m_ids) if all_m_ids else {}
+        q_count += 1
 
-        return {
-            "oee": fleet_oee_val,
-            "availability": fleet_avail_val,
-            "performance": m204_oee.performance if m204_oee else 0.95,
-            "quality": m204_oee.quality if m204_oee else 0.98,
-            "active_alerts": len(alerts),
+        # 6. Active Investigations
+        investigations = self.repo.list_investigations()
+        q_count += 1
+        invs_by_alert = {inv.alert_id: inv for inv in investigations if getattr(inv, "alert_id", None)}
+        invs_by_machine = {inv.machine_id: inv for inv in investigations if getattr(inv, "machine_id", None)}
+
+        # 7. Precursor / Critical Alerts (Hero Alert Cards)
+        critical_alerts = [a for a in all_alerts if a.severity in (Severity.CRITICAL, Severity.HIGH)]
+        sorted_critical = sorted(
+            critical_alerts,
+            key=lambda a: (0 if a.severity == Severity.CRITICAL else 1, -getattr(a, "priority_score", 0.0)),
+        )
+        precursor_alerts = sorted_critical[:3]
+        crit_m_ids = list({a.machine_id for a in precursor_alerts if a.machine_id})
+
+        # 8. Batched Predictions & Features for Precursors
+        predictions_map: Dict[str, Any] = {}
+        features_map: Dict[str, Any] = {}
+        if crit_m_ids:
+            predictions_map = self.repo.get_latest_predictions(crit_m_ids)
+            q_count += 1
+            if hasattr(self.repo, "get_latest_features_batch"):
+                features_map = self.repo.get_latest_features_batch(crit_m_ids)
+                q_count += 1
+
+        # 9. Fleet OEE Summary
+        oee_summary = None
+        if hasattr(self.repo, "get_fleet_oee_summary"):
+            try:
+                res = self.repo.get_fleet_oee_summary()
+                if isinstance(res, dict) and "oee" in res:
+                    oee_summary = res
+                    q_count += 1
+            except Exception:
+                oee_summary = None
+
+        if not oee_summary:
+            m204_oee = self.calculate_machine_oee("M204")
+            oee_summary = {
+                "oee": m204_oee.oee if m204_oee else 0.885,
+                "availability": m204_oee.availability if m204_oee else 0.920,
+                "performance": m204_oee.performance if m204_oee else 0.950,
+                "quality": m204_oee.quality if m204_oee else 0.980,
+            }
+
+        # Build in-memory KPIs
+        kpis = {
+            "oee": oee_summary["oee"],
+            "availability": oee_summary["availability"],
+            "performance": oee_summary["performance"],
+            "quality": oee_summary["quality"],
+            "active_alerts": len(all_alerts),
             "critical_assets": critical_count,
             "warning_assets": warning_count,
             "open_work_orders": open_wo,
@@ -542,43 +678,111 @@ class CommandCenterFacade:
             "total_machines": len(machines),
         }
 
+        # Build in-memory Critical Events
+        critical_events = []
+        for a in precursor_alerts:
+            m = machines_map.get(a.machine_id)
+            r = risks_map.get(a.machine_id)
+            p = predictions_map.get(a.machine_id)
+            f = features_map.get(a.machine_id)
+            inv = invs_by_alert.get(a.alert_id) or invs_by_machine.get(a.machine_id)
+            app = apps_by_machine.get(a.machine_id)
+            oee_res = None
+            if m:
+                phase = (
+                    ScenarioPhase.HIGH_RISK
+                    if m.health_status in (HealthStatus.CRITICAL, HealthStatus.DEGRADING)
+                    else ScenarioPhase.NORMAL
+                )
+                prod, dt = self.scenario_engine.generate_operational_context(
+                    phase=phase, run_date=datetime.now(timezone.utc)
+                )
+                oee_res = self.oee_service.calculate_oee(
+                    production_run=prod, downtime_events=[dt] if dt else None
+                )
+
+            critical_events.append({
+                "alert": a,
+                "machine": m,
+                "risk": r,
+                "features": f,
+                "oee": oee_res,
+                "prediction": p,
+                "investigation": inv,
+                "pending_approval": app,
+            })
+
+        # Build in-memory Asset Grid
+        full_grid = []
+        for m in machines:
+            full_grid.append({
+                "machine": m,
+                "risk": risks_map.get(m.machine_id),
+                "features": None,
+                "active_alerts_count": alert_counts.get(m.machine_id, 0),
+                "open_work_orders_count": 0,
+            })
+        full_grid = sorted(
+            full_grid,
+            key=lambda x: (
+                0 if x["machine"].health_status == HealthStatus.CRITICAL
+                else (1 if x["machine"].health_status == HealthStatus.DEGRADING else 2)
+            ),
+        )
+
+        load_ms = (time.perf_counter() - t0) * 1000.0
+
+        if os.environ.get("DERULE_PERF_DEBUG", "").lower() in ("true", "1", "yes"):
+            logger.info(
+                "[DERULE_PERF] Command Center snapshot loaded in %.2fms | Queries: %d | Machines: %d",
+                load_ms,
+                q_count,
+                len(machines),
+            )
+
+        snapshot = CommandCenterSnapshot(
+            machines=machines,
+            kpis=kpis,
+            critical_events=critical_events,
+            asset_grid=full_grid,
+            investigations=investigations,
+            captured_at=datetime.now(timezone.utc),
+            load_duration_ms=load_ms,
+            query_count=q_count,
+        )
+
+        self._snapshot_cache = snapshot
+        self._snapshot_cache_time = time.time()
+
+        if line_id and line_id != "ALL":
+            filtered_grid = [
+                item for item in full_grid
+                if getattr(item["machine"], "line_id", None) == line_id
+            ]
+            return CommandCenterSnapshot(
+                machines=machines,
+                kpis=kpis,
+                critical_events=critical_events,
+                asset_grid=filtered_grid,
+                investigations=investigations,
+                captured_at=snapshot.captured_at,
+                load_duration_ms=snapshot.load_duration_ms,
+                query_count=snapshot.query_count,
+            )
+
+        return snapshot
+
+    def get_kpis(self) -> Dict[str, Any]:
+        """Compute top-level fleet KPIs deterministically from repository state."""
+        return self.get_command_center_snapshot().kpis
+
     def get_critical_events(self) -> List[Dict[str, Any]]:
         """Return active critical reliability events for hero alert cards."""
-        events: List[Dict[str, Any]] = []
-        alerts = self.repo.list_alerts(status=AlertStatus.OPEN)
-        if not alerts:
-            return events
+        return self.get_command_center_snapshot().critical_events
 
-        m_ids = list({a.machine_id for a in alerts if a.machine_id})
-        predictions_map = self.repo.get_latest_predictions(m_ids)
-        risks_map = self.repo.get_latest_failure_risks(m_ids)
-        machines_map = {m.machine_id: m for m in self.repo.list_machines()}
-        all_invs = self.repo.list_investigations()
-        all_apps = self.approval_service.list_pending_approvals()
-
-        for a in alerts:
-            machine = machines_map.get(a.machine_id) or self.repo.get_machine(a.machine_id)
-            risk = risks_map.get(a.machine_id)
-            pred = predictions_map.get(a.machine_id)
-            features = self.repo.get_latest_features(a.machine_id)
-
-            inv_matches = [inv for inv in all_invs if inv.alert_id == a.alert_id or inv.machine_id == a.machine_id]
-            latest_inv = inv_matches[0] if inv_matches else None
-
-            pending_apps = [app for app in all_apps if app.machine_id == a.machine_id]
-            oee_res = self.calculate_machine_oee(a.machine_id)
-
-            events.append({
-                "alert": a,
-                "machine": machine,
-                "risk": risk,
-                "features": features,
-                "oee": oee_res,
-                "prediction": pred,
-                "investigation": latest_inv,
-                "pending_approval": pending_apps[0] if pending_apps else None,
-            })
-        return events
+    def get_asset_grid(self, line_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Return all machines with health, risk, and current alerts for grid view."""
+        return self.get_command_center_snapshot(line_id=line_id).asset_grid
 
     def get_latest_prediction(self, machine_id: str = "M204") -> Optional[MLFailurePrediction]:
         """Retrieve latest predictive ML output for an asset."""
@@ -631,7 +835,6 @@ class CommandCenterFacade:
 
     def get_predictive_timeline(self, machine_id: str = "M204") -> List[Dict[str, Any]]:
         """Return time series points comparing Deterministic Risk vs ML Failure Probability."""
-        # Baseline / nominal, early warning, high risk, post-recovery timeline points
         base_t = datetime.now(timezone.utc) - timedelta(hours=3)
         return [
             {"time": (base_t + timedelta(minutes=0)).strftime("%H:%M"), "deterministic_risk": 0.08, "ml_probability": 0.04, "phase": "NORMAL"},
@@ -640,31 +843,6 @@ class CommandCenterFacade:
             {"time": (base_t + timedelta(minutes=135)).strftime("%H:%M"), "deterministic_risk": 0.78, "ml_probability": 0.88, "phase": "HIGH_RISK_ALERT"},
             {"time": (base_t + timedelta(minutes=180)).strftime("%H:%M"), "deterministic_risk": 0.12, "ml_probability": 0.06, "phase": "VERIFIED_RECOVERY"},
         ]
-
-    def get_asset_grid(self, line_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Return all machines with health, risk, and current alerts for grid view."""
-        machines = self.repo.list_machines(line_id=line_id if line_id != "ALL" else None)
-        if not machines:
-            return []
-
-        m_ids = [m.machine_id for m in machines]
-        risks_map = self.repo.get_latest_failure_risks(m_ids)
-        all_alerts = self.repo.list_alerts(status=AlertStatus.OPEN)
-        alert_counts: Dict[str, int] = {}
-        for a in all_alerts:
-            if a.machine_id:
-                alert_counts[a.machine_id] = alert_counts.get(a.machine_id, 0) + 1
-
-        grid: List[Dict[str, Any]] = []
-        for m in machines:
-            grid.append({
-                "machine": m,
-                "risk": risks_map.get(m.machine_id),
-                "features": None,
-                "active_alerts_count": alert_counts.get(m.machine_id, 0),
-                "open_work_orders_count": 0,
-            })
-        return sorted(grid, key=lambda x: (0 if x["machine"].health_status == HealthStatus.CRITICAL else (1 if x["machine"].health_status == HealthStatus.DEGRADING else 2)))
 
     def get_asset_detail(self, machine_id: str) -> Optional[Dict[str, Any]]:
         """Return comprehensive asset workspace detail for a specific machine."""
@@ -717,6 +895,10 @@ class CommandCenterFacade:
 
     def get_investigations(self, machine_id: Optional[str] = None) -> List[Investigation]:
         """Return all investigations through repository abstraction."""
+        if not machine_id and self._snapshot_cache is not None:
+            now = time.time()
+            if self._snapshot_cache_time is not None and (now - self._snapshot_cache_time) < self._snapshot_cache_ttl_seconds:
+                return self._snapshot_cache.investigations
         return self.repo.list_investigations(machine_id=machine_id)
 
     def get_investigation_detail(self, investigation_id: str) -> Optional[Dict[str, Any]]:

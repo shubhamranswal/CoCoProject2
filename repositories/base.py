@@ -109,6 +109,11 @@ class TelemetryRepository(ABC):
     def get_latest_features(self, machine_id: str) -> Optional[FeatureVector]: ...
 
     @abstractmethod
+    def get_latest_features_batch(
+        self, machine_ids: List[str]
+    ) -> Dict[str, FeatureVector]: ...
+
+    @abstractmethod
     def get_baseline(self, machine_id: str, signal_name: str) -> Optional[Baseline]: ...
 
     @abstractmethod
@@ -428,6 +433,11 @@ class AnalyticsRepository(ABC):
     def list_machine_oee_daily(
         self, metric_date: Optional[date] = None, line_id: Optional[str] = None
     ) -> List[MachineOEEDaily]: ...
+
+    @abstractmethod
+    def get_fleet_oee_summary(
+        self, metric_date: Optional[date] = None
+    ) -> Dict[str, float]: ...
 
     @abstractmethod
     def get_downtime_daily(

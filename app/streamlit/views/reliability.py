@@ -113,7 +113,7 @@ def render_reliability_view(facade: CommandCenterFacade) -> None:
             height=300,
         )
         fig.update_layout(**layout)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_fail:
         st.markdown("<b>Active Fleet Alerts:</b>", unsafe_allow_html=True)
@@ -168,7 +168,7 @@ def render_reliability_view(facade: CommandCenterFacade) -> None:
         height=320,
     )
     fig_timeline.update_layout(**timeline_layout)
-    st.plotly_chart(fig_timeline, use_container_width=True)
+    st.plotly_chart(fig_timeline, width="stretch")
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 16px 0;'/>", unsafe_allow_html=True)
 

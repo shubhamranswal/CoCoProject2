@@ -113,7 +113,7 @@ def render_quality_view(facade: CommandCenterFacade) -> None:
                 "Z-Score": f"{an.score:.2f}σ",
                 "Timestamp": an.detected_at.strftime("%Y-%m-%d %H:%M:%S UTC"),
             })
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(rows, width="stretch", hide_index=True)
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
@@ -144,4 +144,4 @@ def render_quality_view(facade: CommandCenterFacade) -> None:
                 "Calibration": "VALID",
             })
 
-    st.dataframe(sensor_rows, use_container_width=True, hide_index=True)
+    st.dataframe(sensor_rows, width="stretch", hide_index=True)

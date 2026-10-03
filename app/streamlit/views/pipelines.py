@@ -95,7 +95,7 @@ def render_pipelines_view(facade: CommandCenterFacade) -> None:
     )
 
     stages = facade.get_pipeline_architecture_status()
-    st.dataframe(stages, use_container_width=True, hide_index=True)
+    st.dataframe(stages, width="stretch", hide_index=True)
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 

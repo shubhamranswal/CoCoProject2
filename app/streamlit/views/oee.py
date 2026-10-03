@@ -159,7 +159,7 @@ def render_oee_view(facade: CommandCenterFacade) -> None:
                 """,
                 unsafe_allow_html=True,
             )
-            if st.button("Inspect M204 Bearing Investigation", use_container_width=True):
+            if st.button("Inspect M204 Bearing Investigation", width="stretch"):
                 navigate_to("AI Investigations", machine_id="M204")
                 st.rerun()
 
@@ -207,4 +207,4 @@ def render_oee_view(facade: CommandCenterFacade) -> None:
             "Unplanned Downtime": dt_min,
         })
 
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, width="stretch", hide_index=True)

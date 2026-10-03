@@ -147,11 +147,11 @@ def main() -> None:
         )
         col_err1, col_err2 = st.columns(2)
         with col_err1:
-            if st.button("Retry Snowflake Connection", type="primary", use_container_width=True):
+            if st.button("Retry Snowflake Connection", type="primary", width="stretch"):
                 st.cache_resource.clear()
                 st.rerun()
         with col_err2:
-            if st.button("Switch to Demo Mode (In-Memory)", use_container_width=True):
+            if st.button("Switch to Demo Mode (In-Memory)", width="stretch"):
                 st.session_state.backend_mode = "in_memory"
                 st.cache_resource.clear()
                 st.rerun()

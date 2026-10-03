@@ -457,7 +457,7 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
                     "Duration": f"{t.duration_ms:.1f} ms",
                     "Timestamp": ts_str,
                 })
-            st.dataframe(audit_rows, use_container_width=True, hide_index=True)
+            st.dataframe(audit_rows, width="stretch", hide_index=True)
 
     # 6. Human Approval Gateway Panel (Stage 4 • ACT)
     render_approval_panel(
@@ -524,6 +524,6 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
     if wo:
         st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 16px 0;'/>", unsafe_allow_html=True)
         st.success(f"Dispatched Work Order: {wo.work_order_id} ({wo.status.value})")
-        if st.button("Go to Work Order Management", key="nav_to_wo_btn", type="primary", use_container_width=True):
+        if st.button("Go to Work Order Management", key="nav_to_wo_btn", type="primary", width="stretch"):
             navigate_to("Work Orders", work_order_id=wo.work_order_id)
             st.rerun()

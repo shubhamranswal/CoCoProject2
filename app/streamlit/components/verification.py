@@ -44,12 +44,12 @@ def render_verification_panel(
 
             col_v1, col_v2 = st.columns(2)
             with col_v1:
-                if st.button("Ingest Telemetry & Run Verification", type="primary", use_container_width=True):
+                if st.button("Ingest Telemetry & Run Verification", type="primary", width="stretch"):
                     on_run_verification(work_order.work_order_id, verifier_id, False)
                     st.session_state.last_action_message = "Post-maintenance telemetry verified successfully."
                     st.rerun()
             with col_v2:
-                if st.button("Simulate Improper Repair (Fail Path)", type="secondary", use_container_width=True, help="Simulate wrong bearing / high vibration persisting"):
+                if st.button("Simulate Improper Repair (Fail Path)", type="secondary", width="stretch", help="Simulate wrong bearing / high vibration persisting"):
                     on_run_verification(work_order.work_order_id, verifier_id, True)
                     st.session_state.last_action_message = "Post-maintenance verification failed: signals abnormal."
                     st.rerun()

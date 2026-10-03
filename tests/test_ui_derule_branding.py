@@ -269,3 +269,64 @@ def test_active_precursors_deliberate_empty_state_rendered():
     assert "No Active Failure Precursors" in html
     assert "ALL NOMINAL" in html
     assert "Active Failure Precursors & Threat Identification" in html
+
+
+def test_multiple_alerts_for_same_machine_render_without_duplicate_keys():
+    """Regression test proving multiple alerts for the same machine render without duplicate widget keys."""
+    from unittest.mock import MagicMock, patch
+    from domain.models import Alert
+    from domain.enums import Severity, AlertStatus
+    from app.streamlit.components.alert_cards import render_critical_alert_card
+
+    # Create two alerts for machine M25
+    alert1 = Alert(
+        alert_id="ALT-1118",
+        machine_id="M25",
+        component_id="COMP-BRG",
+        severity=Severity.CRITICAL,
+        status=AlertStatus.OPEN,
+        trigger_reason="Bearing temperature spike",
+        risk_score=0.88,
+    )
+    alert2 = Alert(
+        alert_id="ALT-1125",
+        machine_id="M25",
+        component_id="COMP-MTR",
+        severity=Severity.CRITICAL,
+        status=AlertStatus.OPEN,
+        trigger_reason="Motor overheating threshold exceedance",
+        risk_score=0.92,
+    )
+
+    ev1 = {"alert": alert1, "machine": MagicMock(machine_id="M25", name="Asset M25", line_id="L1"), "risk": None, "features": None, "oee": None, "prediction": None, "investigation": None, "pending_approval": None}
+    ev2 = {"alert": alert2, "machine": MagicMock(machine_id="M25", name="Asset M25", line_id="L1"), "risk": None, "features": None, "oee": None, "prediction": None, "investigation": None, "pending_approval": None}
+
+    seen_keys: list[str] = []
+
+    def mock_button(label, key=None, **kwargs):
+        if key is not None:
+            seen_keys.append(key)
+        return False
+
+    def mock_columns(spec, **kwargs):
+        count = len(spec) if isinstance(spec, (list, tuple)) else int(spec)
+        cols = []
+        for _ in range(count):
+            c = MagicMock()
+            c.__enter__.return_value = c
+            c.__exit__.return_value = None
+            cols.append(c)
+        return cols
+
+    with patch("streamlit.button", side_effect=mock_button), \
+         patch("streamlit.columns", side_effect=mock_columns), \
+         patch("streamlit.markdown"):
+        render_critical_alert_card(ev1)
+        render_critical_alert_card(ev2)
+
+    # Must have generated buttons for both cards
+    assert len(seen_keys) == 8  # 4 buttons per card
+    # Crucial assertion: All keys MUST be distinct, zero duplicate element key collisions
+    assert len(seen_keys) == len(set(seen_keys)), f"Duplicate keys detected: {seen_keys}"
+    assert "open_inv_M25_ALT-1118" in seen_keys
+    assert "open_inv_M25_ALT-1125" in seen_keys

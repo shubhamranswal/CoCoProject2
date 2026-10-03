@@ -118,7 +118,7 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
                 "Work Order": e.work_order_id or "N/A",
                 "Date": e.performed_at.strftime("%Y-%m-%d %H:%M UTC"),
             })
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(rows, width="stretch", hide_index=True)
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
@@ -134,6 +134,6 @@ def render_maintenance_view(facade: CommandCenterFacade) -> None:
             unsafe_allow_html=True,
         )
     with col_act2:
-        if st.button("Open Work Orders Manager", use_container_width=True):
+        if st.button("Open Work Orders Manager", width="stretch"):
             navigate_to("Work Orders")
             st.rerun()

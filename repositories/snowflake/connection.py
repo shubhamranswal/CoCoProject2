@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -51,10 +52,35 @@ class SnowflakeSessionVerification:
     checked_at: Optional[datetime] = None
 
 
+class _PooledConnectionProxy:
+    """Lightweight connection proxy that keeps the physical Snowflake connection alive across queries."""
+
+    def __init__(self, real_conn: Any, manager: SnowflakeConnectionManager) -> None:
+        self._real_conn = real_conn
+        self._manager = manager
+
+    def cursor(self, *args: Any, **kwargs: Any) -> Any:
+        return self._real_conn.cursor(*args, **kwargs)
+
+    def commit(self) -> None:
+        self._real_conn.commit()
+
+    def rollback(self) -> None:
+        self._real_conn.rollback()
+
+    def close(self) -> None:
+        # Prevent premature socket termination across queries
+        pass
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real_conn, name)
+
+
 class SnowflakeConnectionManager:
     def __init__(self, config: Optional[SnowflakeConfig] = None) -> None:
         self.config = config or get_config().snowflake
         self._connection: Any = None
+        self._lock = threading.Lock()
         self._last_successful_query: Optional[datetime] = None
         self._last_latency_ms: Optional[float] = None
 
@@ -166,15 +192,7 @@ class SnowflakeConnectionManager:
             logger.error("Snowflake connection failed: %s", err_msg)
             return False, f"Snowflake connection failed: {err_msg}"
 
-    def get_connection(self, bootstrap: bool = False) -> Any:
-        """Return an active connection or raise an explicit error.
-        
-        When bootstrap=True, connects without specifying database/schema at handshake time,
-        allowing administrative bootstrap (CREATE DATABASE / CREATE SCHEMA) on a clean account.
-        """
-        if not self.config.is_configured:
-            raise ConnectionError("Snowflake is not configured. Set environment variables to enable Snowflake backend.")
-
+    def _create_new_connection(self, bootstrap: bool = False) -> Any:
         try:
             import snowflake.connector  # type: ignore
 
@@ -187,6 +205,42 @@ class SnowflakeConnectionManager:
         except Exception as e:
             err_msg = self._mask_secrets(str(e))
             raise ConnectionError(f"Failed to connect to Snowflake: {err_msg}") from None
+
+    def get_connection(self, bootstrap: bool = False) -> Any:
+        """Return an active connection or raise an explicit error.
+
+        When bootstrap=True, connects without specifying database/schema at handshake time,
+        allowing administrative bootstrap (CREATE DATABASE / CREATE SCHEMA) on a clean account.
+        """
+        if not self.config.is_configured:
+            raise ConnectionError("Snowflake is not configured. Set environment variables to enable Snowflake backend.")
+
+        if bootstrap:
+            return self._create_new_connection(bootstrap=True)
+
+        with self._lock:
+            if self._connection is not None:
+                try:
+                    is_closed_fn = getattr(self._connection, "is_closed", None)
+                    if is_closed_fn and not is_closed_fn():
+                        return _PooledConnectionProxy(self._connection, self)
+                    elif is_closed_fn is None:
+                        return _PooledConnectionProxy(self._connection, self)
+                except Exception:
+                    self._connection = None
+
+            self._connection = self._create_new_connection(bootstrap=False)
+            return _PooledConnectionProxy(self._connection, self)
+
+    def close(self) -> None:
+        """Explicitly terminate physical pooled connection."""
+        with self._lock:
+            if self._connection is not None:
+                try:
+                    self._connection.close()
+                except Exception:
+                    pass
+                self._connection = None
 
     def get_bootstrap_connection(self) -> Any:
         """Return an active connection without requiring database/schema context to already exist."""

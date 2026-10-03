@@ -55,7 +55,22 @@ def render_command_center_view(facade: CommandCenterFacade) -> None:
         unsafe_allow_html=True,
     )
 
-    kpis = facade.get_kpis()
+    line_filter = st.session_state.get("selected_line_id", "ALL")
+    snapshot = None
+    if hasattr(facade, "get_command_center_snapshot"):
+        with st.spinner("Loading operational data..."):
+            snapshot = facade.get_command_center_snapshot(line_id=line_filter)
+
+    if snapshot is not None and hasattr(snapshot, "kpis") and isinstance(snapshot.kpis, dict):
+        kpis = snapshot.kpis
+        critical_events = snapshot.critical_events
+        asset_grid = snapshot.asset_grid
+        investigations = snapshot.investigations
+    else:
+        kpis = facade.get_kpis()
+        critical_events = facade.get_critical_events()
+        asset_grid = facade.get_asset_grid(line_id=line_filter)
+        investigations = facade.get_investigations()
 
     # 2. Key Signals Section
     st.markdown(
@@ -92,7 +107,6 @@ def render_command_center_view(facade: CommandCenterFacade) -> None:
         """,
         unsafe_allow_html=True,
     )
-    critical_events = facade.get_critical_events()
     if critical_events:
         for ev in critical_events:
             render_critical_alert_card(ev)
@@ -131,8 +145,6 @@ def render_command_center_view(facade: CommandCenterFacade) -> None:
             """,
             unsafe_allow_html=True,
         )
-        line_filter = st.session_state.get("selected_line_id", "ALL")
-        asset_grid = facade.get_asset_grid(line_id=line_filter)
         render_asset_grid_table(
             asset_grid=asset_grid,
             on_select_machine=lambda m_id: navigate_to("Assets", machine_id=m_id),
@@ -147,7 +159,6 @@ def render_command_center_view(facade: CommandCenterFacade) -> None:
             """,
             unsafe_allow_html=True,
         )
-        investigations = facade.get_investigations()
         if investigations:
             for inv in investigations[:5]:
                 confidence_pct = inv.confidence * 100 if inv.confidence else 92.0
@@ -175,7 +186,7 @@ def render_command_center_view(facade: CommandCenterFacade) -> None:
                     """,
                     unsafe_allow_html=True,
                 )
-                if st.button("Open Investigation Workspace", key=f"inv_open_{inv.investigation_id}", use_container_width=True):
+                if st.button("Open Investigation Workspace", key=f"inv_open_{inv.investigation_id}", width="stretch"):
                     navigate_to("AI Investigations", machine_id=inv.machine_id, investigation_id=inv.investigation_id)
                     st.rerun()
         else:

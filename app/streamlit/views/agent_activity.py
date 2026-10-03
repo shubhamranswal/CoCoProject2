@@ -115,7 +115,7 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
                 "Timestamp": t.started_at.strftime("%H:%M:%S.%f")[:-3],
                 "Parameters": json.dumps(t.parameters)[:80] + ("..." if len(json.dumps(t.parameters)) > 80 else ""),
             })
-        st.dataframe(call_rows, use_container_width=True, hide_index=True)
+        st.dataframe(call_rows, width="stretch", hide_index=True)
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
@@ -143,4 +143,4 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
                 "Entity ID": getattr(a, "resource_id", getattr(a, "entity_id", "")),
                 "Details": json.dumps(a.details or {})[:80],
             })
-        st.dataframe(audit_rows, use_container_width=True, hide_index=True)
+        st.dataframe(audit_rows, width="stretch", hide_index=True)

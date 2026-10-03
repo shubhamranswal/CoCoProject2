@@ -172,7 +172,7 @@ def render_knowledge_view(facade: CommandCenterFacade) -> None:
                 "Section": getattr(d, "section", "Bearing Assembly"),
                 "Snippet": (getattr(d, "content", "")[:120] + "..."),
             })
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(rows, width="stretch", hide_index=True)
     else:
         st.markdown(
             """
