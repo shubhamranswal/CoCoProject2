@@ -684,18 +684,117 @@ def apply_industrial_theme(theme_mode: str = "light") -> None:
             margin: 0 8px;
         }}
 
-        /* Sidebar Logo Container */
-        .derule-sidebar-brand {{
-            padding: 4px 0 14px 0;
-            margin-bottom: 12px;
-            border-bottom: 1px solid var(--border-subtle);
+        /* DeRule Floating Copilot Widget Styles (derule-copilot-launcher-marker, derule-copilot-window-marker) */
+        .st-key-derule_copilot_launcher_container {{
+            position: fixed !important;
+            bottom: 24px !important;
+            right: 24px !important;
+            z-index: 99999 !important;
+            width: auto !important;
+            max-width: 220px !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            pointer-events: auto !important;
         }}
-        .derule-sidebar-brand img {{
-            max-width: 140px;
-            height: auto;
-            object-fit: contain;
-            display: block;
-            margin-bottom: 8px;
+
+        .st-key-derule_copilot_launcher_container button {{
+            background: var(--btn-prim-bg) !important;
+            color: #ffffff !important;
+            border: 1px solid var(--primary-accent) !important;
+            border-radius: 20px !important;
+            font-family: 'Poppins', sans-serif !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            padding: 8px 18px !important;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
+            cursor: pointer !important;
+            transition: all 0.15s ease-in-out !important;
+            white-space: nowrap !important;
+        }}
+
+        .st-key-derule_copilot_launcher_container button:hover {{
+            box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4) !important;
+            transform: translateY(-2px) !important;
+        }}
+
+        /* DeRule Copilot Header Actions */
+        .st-key-derule_copilot_clear_btn button,
+        .st-key-derule_copilot_close_btn button {{
+            min-width: 30px !important;
+            width: 30px !important;
+            min-height: 30px !important;
+            height: 30px !important;
+
+            padding: 0 !important;
+            margin: 0 !important;
+
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+
+            background: var(--bg-card-subtle) !important;
+            color: var(--text-secondary) !important;
+            border: 1px solid var(--border-subtle) !important;
+            border-radius: 6px !important;
+
+            font-family: Arial, sans-serif !important;
+            font-size: 17px !important;
+            font-weight: 500 !important;
+            line-height: 1 !important;
+
+            box-shadow: none !important;
+            transition:
+                background-color 150ms ease,
+                border-color 150ms ease,
+                color 150ms ease !important;
+        }}
+
+        /* Clear */
+        .st-key-derule_copilot_clear_btn button:hover {{
+            background: var(--bg-hover) !important;
+            color: var(--primary-accent) !important;
+            border-color: var(--primary-accent) !important;
+        }}
+
+        /* Close */
+        .st-key-derule_copilot_close_btn button:hover {{
+            background: var(--badge-crit-bg) !important;
+            color: var(--badge-crit-text) !important;
+            border-color: var(--badge-crit-border) !important;
+        }}
+
+        .st-key-derule_copilot_launcher_container button::before {{
+            content: "";
+            width: 6px;
+            height: 6px;
+            margin-right: 7px;
+            border-radius: 50%;
+            background: #22c55e;
+            box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18);
+        }}
+
+
+        
+        .st-key-derule_copilot_window_container {{
+            position: fixed !important;
+            bottom: 76px !important;
+            right: 24px !important;
+            z-index: 99999 !important;
+            width: 420px !important;
+            max-width: calc(100vw - 48px) !important;
+            max-height: calc(100vh - 120px) !important;
+            background-color: var(--bg-card) !important;
+            border: 1px solid var(--border-strong) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4) !important;
+            padding: 14px 16px !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            pointer-events: auto !important;
+            box-sizing: border-box !important;
         }}
         </style>
     """

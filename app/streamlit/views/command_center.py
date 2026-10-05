@@ -19,6 +19,7 @@ from app.streamlit.components import (
     render_asset_grid_table,
     render_critical_alert_card,
     render_kpi_row,
+    paginate_items,
 )
 from app.streamlit.components.metric_cards import render_key_signals, render_reliability_overview
 from app.streamlit.services.view_service import CommandCenterFacade
@@ -108,7 +109,13 @@ def render_command_center_view(facade: CommandCenterFacade) -> None:
         unsafe_allow_html=True,
     )
     if critical_events:
-        for ev in critical_events:
+        page_events, _, _ = paginate_items(
+            items=critical_events,
+            page_size=5,
+            state_key="pagination_command_center_alerts_page",
+            item_label="precursor threats",
+        )
+        for ev in page_events:
             render_critical_alert_card(ev)
     else:
         st.markdown(
@@ -137,17 +144,11 @@ def render_command_center_view(facade: CommandCenterFacade) -> None:
     col_grid, col_inv = st.columns([3, 2])
 
     with col_grid:
-        st.markdown(
-            """
-            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">
-                Fleet Asset Health Status
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
         render_asset_grid_table(
             asset_grid=asset_grid,
             on_select_machine=lambda m_id: navigate_to("Assets", machine_id=m_id),
+            page_size=10,
+            state_key="pagination_command_center_fleet_page",
         )
 
     with col_inv:
@@ -160,7 +161,13 @@ def render_command_center_view(facade: CommandCenterFacade) -> None:
             unsafe_allow_html=True,
         )
         if investigations:
-            for inv in investigations[:5]:
+            page_invs, _, _ = paginate_items(
+                items=investigations,
+                page_size=5,
+                state_key="pagination_command_center_inv_page",
+                item_label="cases",
+            )
+            for inv in page_invs:
                 confidence_pct = inv.confidence * 100 if inv.confidence else 92.0
                 st_color = "#d97706" if inv.status.value == "PENDING_APPROVAL" else ("#16a34a" if inv.status.value == "CLOSED" else "#0284c7")
                 fm_str = inv.failure_mode.value.replace('_', ' ') if hasattr(inv.failure_mode, "value") else str(inv.failure_mode).replace('_', ' ')

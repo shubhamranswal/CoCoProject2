@@ -1,27 +1,29 @@
 """Industrial Data Tables Component.
 
 Follows Sections 12 & 30 of AGENT.md:
-- High information density asset health grid
-- Work order inventory table
-- Maintenance history table
+- High information density asset health grid with stateful pagination
+- Work order inventory table with stateful pagination
 - Clear semantic status indicators with 1-click navigation
 - Clean industrial typography, theme CSS variables, and zero emojis
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 import streamlit as st
 
 from domain.enums import HealthStatus
 from app.streamlit.state import navigate_to
+from app.streamlit.components.pagination import get_paginated_slice, render_pagination_controls
 
 
 def render_asset_grid_table(
     asset_grid: List[Dict[str, Any]],
     on_select_machine: Callable[[str], None],
+    page_size: int = 10,
+    state_key: str = "pagination_command_center_fleet_page",
 ) -> None:
-    """Render the high information density asset health table."""
+    """Render the high information density asset health table with bounded pagination."""
     st.markdown(
         """
         <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">
@@ -29,6 +31,17 @@ def render_asset_grid_table(
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+    if not asset_grid:
+        st.info("No asset records found.")
+        return
+
+    # Slice records to active page
+    page_items, current_page, total_pages, total_records, start_idx, end_idx = get_paginated_slice(
+        items=asset_grid,
+        page_size=page_size,
+        state_key=state_key,
     )
 
     # Headers
@@ -43,7 +56,7 @@ def render_asset_grid_table(
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 4px 0 8px 0;'/>", unsafe_allow_html=True)
 
-    for item in asset_grid:
+    for item in page_items:
         m = item["machine"]
         risk = item["risk"]
         alerts_cnt = item["active_alerts_count"]
@@ -76,15 +89,35 @@ def render_asset_grid_table(
 
         st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 2px 0;'/>", unsafe_allow_html=True)
 
+    # Render Pagination Controls at Bottom
+    render_pagination_controls(
+        state_key=state_key,
+        current_page=current_page,
+        total_pages=total_pages,
+        total_records=total_records,
+        start_idx=start_idx,
+        end_idx=end_idx,
+        item_label="machines",
+    )
+
 
 def render_work_orders_table(
     work_orders: List[Any],
     on_select_work_order: Callable[[str], None],
+    page_size: int = 10,
+    state_key: str = "pagination_work_orders_page",
 ) -> None:
-    """Render the work orders table."""
+    """Render the work orders table with bounded pagination."""
     if not work_orders:
         st.info("No work orders found matching criteria.")
         return
+
+    # Slice records to active page
+    page_items, current_page, total_pages, total_records, start_idx, end_idx = get_paginated_slice(
+        items=work_orders,
+        page_size=page_size,
+        state_key=state_key,
+    )
 
     h1, h2, h3, h4, h5, h6, h7 = st.columns([1.5, 1.2, 2.5, 1.2, 1.2, 1.5, 1.2])
     h1.caption("**WO ID**")
@@ -97,7 +130,7 @@ def render_work_orders_table(
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 4px 0 8px 0;'/>", unsafe_allow_html=True)
 
-    for wo in work_orders:
+    for wo in page_items:
         c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 1.2, 2.5, 1.2, 1.2, 1.5, 1.2])
         c1.markdown(f"<code>{wo.work_order_id}</code>", unsafe_allow_html=True)
         c2.markdown(f"<b>{wo.machine_id}</b>", unsafe_allow_html=True)
@@ -115,3 +148,14 @@ def render_work_orders_table(
                 st.rerun()
 
         st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 2px 0;'/>", unsafe_allow_html=True)
+
+    # Render Pagination Controls at Bottom
+    render_pagination_controls(
+        state_key=state_key,
+        current_page=current_page,
+        total_pages=total_pages,
+        total_records=total_records,
+        start_idx=start_idx,
+        end_idx=end_idx,
+        item_label="work orders",
+    )

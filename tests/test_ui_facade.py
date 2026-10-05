@@ -365,3 +365,41 @@ def test_sidebar_reset_demo_disabled_when_backend_is_snowflake() -> None:
     reset_button = next((b for b in button_calls if "Reset" in b[0]), None)
     assert reset_button is not None
     assert reset_button[1].get("disabled") is True
+
+
+def test_production_orders_tab_renders_authoritative_fields_without_attribute_error() -> None:
+    """Verify render_assets_view renders ProductionOrderContextItem without target_qty AttributeError."""
+    import streamlit as st
+    from app.streamlit.services.view_service import get_facade
+    from app.streamlit.views.assets import render_assets_view
+    from unittest.mock import MagicMock, patch
+
+    facade = get_facade("in_memory")
+    captured_dataframes = []
+
+    def mock_df(data, **kwargs):
+        captured_dataframes.append(data)
+        return MagicMock()
+
+    with patch.dict(st.session_state, {"selected_machine_id": "M21"}, clear=True), \
+         patch("streamlit.dataframe", side_effect=mock_df), \
+         patch("streamlit.selectbox", return_value="M21"), \
+         patch("streamlit.tabs", side_effect=lambda tabs: [MagicMock() for _ in tabs]), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.plotly_chart"), \
+         patch("streamlit.button", return_value=False):
+        
+        # Must execute cleanly without AttributeError
+        render_assets_view(facade)
+
+    # Verify that at least one dataframe call contained production orders with authoritative fields
+    prod_order_dfs = [df for df in captured_dataframes if isinstance(df, list) and len(df) > 0 and "Planned Qty" in df[0]]
+    assert len(prod_order_dfs) > 0, "Expected production order dataframe to be rendered with 'Planned Qty'"
+    prod_row = prod_order_dfs[0][0]
+    assert "Target Qty" not in prod_row, "'Target Qty' must not be accessed or rendered"
+    assert "Planned Qty" in prod_row, "'Planned Qty' must be present"
+    assert "Produced Qty" in prod_row, "'Produced Qty' must be present"
+    assert "Remaining Qty" in prod_row, "'Remaining Qty' must be present"
+    assert "Unit Price" in prod_row, "'Unit Price' must be present"
+    assert isinstance(prod_row["Planned Qty"], int)
