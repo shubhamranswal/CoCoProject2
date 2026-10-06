@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 import streamlit as st
 
+from app.streamlit.components.pagination import paginate_items
 from app.streamlit.services.view_service import CommandCenterFacade
 from app.streamlit.state import navigate_to
 from domain.enums import HealthStatus
@@ -176,8 +177,14 @@ def render_oee_view(facade: CommandCenterFacade) -> None:
     )
 
     machines = facade.repo.list_machines()
+    page_machines, _, _ = paginate_items(
+        items=machines,
+        page_size=10,
+        state_key="pagination_downtime_page",
+        item_label="machines",
+    )
     rows = []
-    for m in machines:
+    for m in page_machines:
         # Calculate or derive deterministic OEE for machine
         if m.machine_id == "M204" and m204_oee:
             asset_oee = m204_oee

@@ -25,6 +25,12 @@ from app.streamlit.components.tables import (
     render_asset_grid_table,
     render_work_orders_table,
 )
+from app.streamlit.components.pagination import (
+    get_paginated_slice,
+    paginate_items,
+    render_pagination_controls,
+    reset_pagination,
+)
 
 __all__ = [
     "apply_industrial_theme",
@@ -44,4 +50,8 @@ __all__ = [
     "render_verification_panel",
     "render_asset_grid_table",
     "render_work_orders_table",
+    "get_paginated_slice",
+    "paginate_items",
+    "render_pagination_controls",
+    "reset_pagination",
 ]

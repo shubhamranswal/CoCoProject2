@@ -18,6 +18,7 @@ from app.streamlit.components.charts import (
     render_temperature_trend_chart,
     render_vibration_trend_chart,
 )
+from app.streamlit.components.pagination import paginate_items
 from app.streamlit.services.view_service import CommandCenterFacade
 from domain.enums import HealthStatus
 
@@ -94,9 +95,10 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
     # Telemetry Visualizations
     telemetry_data = facade.get_telemetry_history(cur_mach_id)
 
-    tab_charts, tab_corr, tab_comp, tab_maint = st.tabs([
+    tab_charts, tab_corr, tab_prod, tab_comp, tab_maint = st.tabs([
         "Telemetry Trends",
         "Signal Correlation (Vib + Temp + Risk)",
+        "Production Orders",
         "Components & Sensors",
         "Maintenance & Failure History",
     ])
@@ -112,18 +114,65 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
         st.caption("Synchronous time-series analysis showing vibration harmonic spike coupled with thermal runaway and rising failure risk:")
         render_signal_correlation_chart(telemetry_data)
 
+    with tab_prod:
+        st.markdown(f"<b>Active Production Orders on Asset {cur_mach_id}:</b>", unsafe_allow_html=True)
+        prod_orders = []
+        try:
+            prod_out = facade.tool_registry.execute_tool("get_production_context", machine_id=cur_mach_id)
+            if prod_out and getattr(prod_out, "orders", None):
+                prod_orders = prod_out.orders
+        except Exception:
+            pass
+
+        if prod_orders:
+            page_orders, _, _ = paginate_items(
+                items=prod_orders,
+                page_size=5,
+                state_key=f"pagination_assets_prod_{cur_mach_id}",
+                item_label="orders",
+            )
+            order_rows = []
+            for o in page_orders:
+                order_rows.append({
+                    "Order ID": o.order_id,
+                    "Product": o.product_name or o.product_id,
+                    "Planned Qty": o.planned_qty,
+                    "Produced Qty": o.produced_qty,
+                    "Remaining Qty": o.remaining_qty,
+                    "Unit Price": f"INR {o.unit_price_inr:,.0f}",
+                    "Revenue Exposure": f"INR {o.unfulfilled_revenue_exposure_inr:,.0f}",
+                    "Status": o.status.upper(),
+                })
+            st.dataframe(order_rows, width="stretch", hide_index=True)
+        else:
+            st.info(f"No active production orders currently allocated to machine {cur_mach_id}.")
+
     with tab_comp:
         col_c, col_s = st.columns(2)
         with col_c:
             st.markdown("<b>Subassembly Components:</b>", unsafe_allow_html=True)
-            for c in detail["components"]:
+            comps = detail.get("components", [])
+            page_comps, _, _ = paginate_items(
+                items=comps,
+                page_size=6,
+                state_key=f"pagination_assets_comp_{cur_mach_id}",
+                item_label="components",
+            )
+            for c in page_comps:
                 st.markdown(
                     f"- <b>{c.name}</b> (<code>{c.component_id}</code>) - Type: <code>{c.component_type}</code> | Health: <code>{c.health_status.value}</code>",
                     unsafe_allow_html=True,
                 )
         with col_s:
             st.markdown("<b>Calibrated Sensors:</b>", unsafe_allow_html=True)
-            for s in detail["sensors"]:
+            sensors = detail.get("sensors", [])
+            page_sensors, _, _ = paginate_items(
+                items=sensors,
+                page_size=6,
+                state_key=f"pagination_assets_sens_{cur_mach_id}",
+                item_label="sensors",
+            )
+            for s in page_sensors:
                 st.markdown(
                     f"- <b>{s.name}</b> (<code>{s.sensor_id}</code>) - Type: <code>{s.sensor_type.value}</code> | Unit: <code>{s.unit}</code> | Sample Rate: {s.sampling_rate_hz}Hz",
                     unsafe_allow_html=True,
@@ -131,8 +180,15 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
 
     with tab_maint:
         st.markdown("<b>Past Maintenance Events:</b>", unsafe_allow_html=True)
-        if detail["maintenance"]:
-            for m in detail["maintenance"]:
+        maint_events = detail.get("maintenance", [])
+        if maint_events:
+            page_maint, _, _ = paginate_items(
+                items=maint_events,
+                page_size=5,
+                state_key=f"pagination_assets_maint_{cur_mach_id}",
+                item_label="maintenance events",
+            )
+            for m in page_maint:
                 st.markdown(
                     f"- <b>{m.performed_at.strftime('%Y-%m-%d')}</b>: {m.maintenance_type} by <b>{m.technician_name}</b> ({m.duration_hours}h) - {m.notes}",
                     unsafe_allow_html=True,
@@ -141,8 +197,15 @@ def render_assets_view(facade: CommandCenterFacade) -> None:
             st.caption("No historical maintenance events logged.")
 
         st.markdown("<br><b>Past Failure Incidents:</b>", unsafe_allow_html=True)
-        if detail["failures"]:
-            for f in detail["failures"]:
+        failure_events = detail.get("failures", [])
+        if failure_events:
+            page_fails, _, _ = paginate_items(
+                items=failure_events,
+                page_size=5,
+                state_key=f"pagination_assets_fail_{cur_mach_id}",
+                item_label="failure incidents",
+            )
+            for f in page_fails:
                 st.markdown(
                     f"- <b>{f.occurred_at.strftime('%Y-%m-%d')}</b>: {f.failure_mode.value} - Cause: {f.root_cause} (Downtime: {f.downtime_hours}h)",
                     unsafe_allow_html=True,

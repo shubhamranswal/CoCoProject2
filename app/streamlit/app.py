@@ -24,6 +24,7 @@ import streamlit as st
 from app.streamlit.components.header import render_header
 from app.streamlit.components.sidebar import render_sidebar
 from app.streamlit.components.styles import apply_industrial_theme
+from app.streamlit.components.copilot import render_copilot_chat
 from app.streamlit.services.view_service import get_facade
 from app.streamlit.state import init_session_state, navigate_to
 from config import get_config
@@ -177,8 +178,8 @@ def main() -> None:
         render_command_center_view(facade)
     elif active_view in ("Production", "Assets"):
         render_assets_view(facade)
-    elif active_view in ("Alerts",):
-        render_command_center_view(facade)
+    elif active_view in ("Alerts", "Reliability"):
+        render_reliability_view(facade)
     elif active_view in ("Downtime", "OEE"):
         render_oee_view(facade)
     elif active_view in ("Quality",):
@@ -189,8 +190,6 @@ def main() -> None:
         render_work_orders_view(facade)
     elif active_view in ("Investigations", "AI Investigations"):
         render_investigations_view(facade)
-    elif active_view in ("Reliability",):
-        render_reliability_view(facade)
     elif active_view in ("Knowledge",):
         render_knowledge_view(facade)
     elif active_view in ("Agent Activity",):
@@ -210,6 +209,10 @@ def main() -> None:
     with col_foot_right:
         backend_label = "Snowflake Cloud Gov" if st.session_state.backend_mode == "snowflake" else "In-Memory Seeded Store"
         st.caption(f"Status: **ONLINE** | Backend: `{backend_label}` | Version: `v1.2.0`")
+
+    # 11. Global DeRule Autonomous Investigation Copilot
+    if facade:
+        render_copilot_chat(facade)
 
 
 if __name__ == "__main__":

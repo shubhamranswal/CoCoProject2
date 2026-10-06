@@ -222,6 +222,22 @@ class CommandCenterFacade:
         """Execute canonical investigation request directly."""
         return self.investigation_service.investigate(request)
 
+    def ask_copilot(
+        self,
+        query: str,
+        current_machine_id: Optional[str] = None,
+        current_investigation_id: Optional[str] = None,
+    ) -> Any:
+        """Query global read-only DeRule Copilot investigation assistant."""
+        if not hasattr(self, "_copilot") or self._copilot is None:
+            from services.copilot_service import DeRuleCopilot
+            self._copilot = DeRuleCopilot(facade=self)
+        return self._copilot.ask(
+            query=query,
+            current_machine_id=current_machine_id,
+            current_investigation_id=current_investigation_id,
+        )
+
     def submit_action_proposal_for_recommendation(
         self, investigation_id: str, recommendation_id: Optional[str] = None
     ) -> ActionProposal:

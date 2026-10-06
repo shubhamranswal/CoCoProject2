@@ -23,6 +23,7 @@ import streamlit as st
 
 from app.streamlit.components.approvals import render_approval_panel
 from app.streamlit.components.evidence import render_evidence_panel
+from app.streamlit.components.pagination import paginate_items
 from app.streamlit.components.timelines import render_investigation_timeline
 from app.streamlit.services.view_service import CommandCenterFacade
 from app.streamlit.state import navigate_to
@@ -50,6 +51,27 @@ def render_investigations_view(facade: CommandCenterFacade) -> None:
     cur_inv_id = st.session_state.get("selected_investigation_id")
     if cur_inv_id not in inv_ids:
         cur_inv_id = inv_ids[0]
+
+    # Investigation Cases Index (Paginated)
+    with st.expander("Investigation Cases Index & Directory", expanded=False):
+        page_invs, _, _ = paginate_items(
+            items=investigations,
+            page_size=10,
+            state_key="pagination_investigations_page",
+            item_label="cases",
+        )
+        inv_rows = []
+        for item in page_invs:
+            inv_rows.append({
+                "Case ID": item.investigation_id,
+                "Machine ID": item.machine_id,
+                "Failure Mode": item.failure_mode.value if hasattr(item.failure_mode, "value") else str(item.failure_mode),
+                "Status": item.status.value if hasattr(item.status, "value") else str(item.status),
+                "Confidence": f"{item.confidence * 100:.0f}%" if item.confidence else "N/A",
+                "Evidence Count": len(getattr(item, "evidence", [])),
+                "Created At": item.created_at.strftime("%Y-%m-%d %H:%M UTC") if getattr(item, "created_at", None) else "N/A",
+            })
+        st.dataframe(inv_rows, width="stretch", hide_index=True)
 
     # Investigation Selector
     col_sel, col_act = st.columns([3, 1])

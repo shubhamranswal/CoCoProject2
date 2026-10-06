@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Dict, List
 import streamlit as st
 
+from app.streamlit.components.pagination import paginate_items
 from app.streamlit.services.view_service import CommandCenterFacade
 
 
@@ -164,8 +165,14 @@ def render_knowledge_view(facade: CommandCenterFacade) -> None:
     )
 
     if docs:
+        page_docs, _, _ = paginate_items(
+            items=docs,
+            page_size=10,
+            state_key="pagination_knowledge_page",
+            item_label="documentation chunks",
+        )
         rows = []
-        for d in docs:
+        for d in page_docs:
             rows.append({
                 "Doc ID": getattr(d, "doc_id", "DOC-001"),
                 "Title": getattr(d, "title", "DRV-5000 Maintenance Manual"),

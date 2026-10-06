@@ -15,6 +15,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from app.streamlit.components.charts import get_plotly_layout
+from app.streamlit.components.pagination import paginate_items
 from app.streamlit.services.view_service import CommandCenterFacade
 from domain.enums import HealthStatus
 
@@ -118,7 +119,8 @@ def render_reliability_view(facade: CommandCenterFacade) -> None:
     with col_fail:
         st.markdown("<b>Active Fleet Alerts:</b>", unsafe_allow_html=True)
         if alerts:
-            for a in alerts:
+            page_alerts, _, _ = paginate_items(alerts, page_size=10, state_key="pagination_reliability_alerts_page")
+            for a in page_alerts:
                 st.markdown(
                     f"""
                     <div class="ind-card" style="margin-bottom: 8px;">
@@ -175,7 +177,8 @@ def render_reliability_view(facade: CommandCenterFacade) -> None:
     # Historical Failures
     st.markdown("<b>Precedent Failure Incidents:</b>", unsafe_allow_html=True)
     if failures:
-        for f in failures:
+        page_failures, _, _ = paginate_items(failures, page_size=10, state_key="pagination_reliability_failures_page")
+        for f in page_failures:
             st.markdown(
                 f"- **{f.occurred_at.strftime('%Y-%m-%d')}** (`{f.machine_id}`): **{f.failure_mode.value}** - Root Cause: {f.root_cause} | Downtime: {f.downtime_hours}h | Action: {f.maintenance_action_taken}",
                 unsafe_allow_html=True,

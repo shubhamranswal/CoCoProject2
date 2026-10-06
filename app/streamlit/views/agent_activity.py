@@ -13,6 +13,7 @@ import json
 from typing import Any, Dict, List
 import streamlit as st
 
+from app.streamlit.components.pagination import paginate_items
 from app.streamlit.services.view_service import CommandCenterFacade
 
 
@@ -107,15 +108,18 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
     else:
         call_rows = []
         for t in tool_calls:
+            params = getattr(t, "arguments", getattr(t, "parameters", {}))
+            params_str = json.dumps(params)
             call_rows.append({
                 "Tool": t.tool_name,
-                "Actor": t.actor,
+                "Actor": getattr(t, "actor", "Autonomous Agent"),
                 "Duration": f"{t.duration_ms:.1f} ms",
-                "Success": "PASS" if t.success else "FAIL",
+                "Success": "PASS" if getattr(t, "is_success", getattr(t, "success", True)) else "FAIL",
                 "Timestamp": t.started_at.strftime("%H:%M:%S.%f")[:-3],
-                "Parameters": json.dumps(t.parameters)[:80] + ("..." if len(json.dumps(t.parameters)) > 80 else ""),
+                "Parameters": params_str[:80] + ("..." if len(params_str) > 80 else ""),
             })
-        st.dataframe(call_rows, width="stretch", hide_index=True)
+        page_calls, _, _ = paginate_items(call_rows, page_size=10, state_key="pagination_agent_tools_page", item_label="tool invocations")
+        st.dataframe(page_calls, width="stretch", hide_index=True)
 
     st.markdown("<hr style='border: none; border-bottom: 1px solid var(--border-subtle); margin: 18px 0;'/>", unsafe_allow_html=True)
 
@@ -143,4 +147,5 @@ def render_agent_activity_view(facade: CommandCenterFacade) -> None:
                 "Entity ID": getattr(a, "resource_id", getattr(a, "entity_id", "")),
                 "Details": json.dumps(a.details or {})[:80],
             })
-        st.dataframe(audit_rows, width="stretch", hide_index=True)
+        page_audits, _, _ = paginate_items(audit_rows, page_size=10, state_key="pagination_agent_audits_page", item_label="audit events")
+        st.dataframe(page_audits, width="stretch", hide_index=True)
