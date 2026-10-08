@@ -150,6 +150,14 @@ class CommandCenterFacade:
         self._snapshot_cache = None
         self._snapshot_cache_time = None
 
+    def reset_connection(self) -> None:
+        """Reset underlying repository connection if supported."""
+        if hasattr(self.repo, "reset"):
+            self.repo.reset()
+        elif hasattr(self.repo, "conn_mgr") and hasattr(self.repo.conn_mgr, "reset"):
+            self.repo.conn_mgr.reset()
+        self.invalidate_snapshot_cache()
+
     def _ensure_initial_state(self) -> None:
         """Seed M204 active degradation state on startup so the UI renders the hero alert immediately."""
         alerts = self.repo.list_alerts(machine_id="M204", status=AlertStatus.OPEN)
@@ -1105,3 +1113,15 @@ class CommandCenterFacade:
 def get_facade(backend_mode: str = "in_memory") -> CommandCenterFacade:
     """Return cached facade instance bound to active backend."""
     return CommandCenterFacade(backend_mode=backend_mode)
+
+
+def reset_facade() -> None:
+    """Reset cached facade and underlying connections in Streamlit."""
+    try:
+        get_facade.clear()
+    except Exception:
+        pass
+    try:
+        st.cache_resource.clear()
+    except Exception:
+        pass
