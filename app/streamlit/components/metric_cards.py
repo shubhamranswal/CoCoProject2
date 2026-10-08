@@ -17,22 +17,26 @@ def render_key_signals(kpis: Dict[str, Any]) -> None:
     """Render the 4 DeRule Key Operational Signals."""
     c1, c2, c3, c4 = st.columns(4)
 
-    alerts_cnt = kpis.get("active_alerts", 0)
+    crit_alerts_cnt = kpis.get("critical_alerts", kpis.get("active_alerts", 0))
+    total_alerts_cnt = kpis.get("active_alerts", 0)
     crit_cnt = kpis.get("critical_assets", 0)
+    warn_cnt = kpis.get("warning_assets", 0)
+    machines_at_risk_cnt = kpis.get("machines_at_risk", crit_cnt)
     wo_cnt = kpis.get("open_work_orders", 0)
     app_cnt = kpis.get("pending_approvals", 0)
+    affected_lines = kpis.get("affected_lines", min(crit_cnt, 5))
 
-    alert_color = "#dc2626" if alerts_cnt > 0 else "#16a34a"
-    crit_color = "#dc2626" if crit_cnt > 0 else "#16a34a"
+    alert_color = "#dc2626" if crit_alerts_cnt > 0 else ("#d97706" if total_alerts_cnt > 0 else "#16a34a")
+    risk_color = "#dc2626" if crit_cnt > 0 else ("#d97706" if machines_at_risk_cnt > 0 else "#16a34a")
 
     with c1:
         st.markdown(
             f"""
             <div class="ind-card">
                 <div class="metric-label">Critical Alerts</div>
-                <div class="metric-value" style="color: {alert_color};">{alerts_cnt}</div>
+                <div class="metric-value" style="color: {alert_color};">{crit_alerts_cnt}</div>
                 <div class="metric-delta" style="color: var(--text-muted);">
-                    {'Action required' if alerts_cnt > 0 else 'All nominal'}
+                    {f'{total_alerts_cnt} total active' if total_alerts_cnt > 0 else 'All nominal'}
                 </div>
             </div>
             """,
@@ -44,9 +48,9 @@ def render_key_signals(kpis: Dict[str, Any]) -> None:
             f"""
             <div class="ind-card">
                 <div class="metric-label">Machines At Risk</div>
-                <div class="metric-value" style="color: {crit_color};">{crit_cnt}</div>
+                <div class="metric-value" style="color: {risk_color};">{machines_at_risk_cnt}</div>
                 <div class="metric-delta" style="color: var(--text-muted);">
-                    {f'{crit_cnt} asset requiring review' if crit_cnt > 0 else '0 at risk'}
+                    {f'{crit_cnt} Critical • {warn_cnt} Warning' if machines_at_risk_cnt > 0 else '0 at risk'}
                 </div>
             </div>
             """,
@@ -68,16 +72,16 @@ def render_key_signals(kpis: Dict[str, Any]) -> None:
         )
 
     with c4:
-        exposure_label = f"{crit_cnt} Production Line Affected" if crit_cnt > 0 else "Nominal Line Schedule"
+        exposure_label = f"{affected_lines} Production {'Line' if affected_lines == 1 else 'Lines'} Affected" if affected_lines > 0 else "Nominal Line Schedule"
         st.markdown(
             f"""
             <div class="ind-card">
                 <div class="metric-label">Production Exposure</div>
-                <div class="metric-value" style="font-size: 16px; margin-top: 4px; color: {'#d97706' if crit_cnt > 0 else '#16a34a'};">
+                <div class="metric-value" style="font-size: 16px; margin-top: 4px; color: {'#d97706' if affected_lines > 0 else '#16a34a'};">
                     {exposure_label}
                 </div>
                 <div class="metric-delta" style="color: var(--text-muted);">
-                    {'Mitigation required' if crit_cnt > 0 else 'Zero bottleneck'}
+                    {'Mitigation required' if affected_lines > 0 else 'Zero bottleneck'}
                 </div>
             </div>
             """,

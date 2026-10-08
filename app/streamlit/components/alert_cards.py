@@ -35,7 +35,7 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
     failure_mode_val = (risk.failure_mode.value if risk else (alert.failure_mode.value if alert else "BEARING_DEGRADATION")).replace("_", " ")
 
     det_risk_display = f"{risk.risk_score * 100:.0f}%" if risk else (f"{alert.risk_score * 100:.0f}%" if alert else "--")
-    ml_prob_val = pred.failure_probability if pred else 0.84
+    ml_prob_val = pred.failure_probability if pred else (risk.risk_score if risk else 0.84)
     ml_prob_display = f"{ml_prob_val * 100:.1f}%"
     model_name = pred.model_name if pred else "BearingFailure-v1.0"
     horizon_str = f"{pred.prediction_horizon_hours}h" if pred else "24h"
@@ -72,6 +72,9 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
         else:
             status_desc = inv.status.value.replace("_", " ").title()
 
+    alerts_cnt = event.get("active_alerts_count", 0)
+    alerts_tag = f" &nbsp;•&nbsp; <span style='color: var(--text-muted); font-weight: 400; text-transform: none;'>Active Alerts: {alerts_cnt}</span>" if alerts_cnt > 0 else ""
+
     hero_card_html = (
         f'<div class="ind-card-hero">'
         f'<div style="display: flex; justify-content: space-between; align-items: flex-start;">'
@@ -85,7 +88,7 @@ def render_critical_alert_card(event: Dict[str, Any]) -> None:
         f'{mach_id} - {mach_name}'
         f'</div>'
         f'<div style="font-size: 12px; font-weight: 600; color: #dc2626; text-transform: uppercase; letter-spacing: 0.04em;">'
-        f'{failure_mode_val} &nbsp;•&nbsp; <span style="color: var(--text-muted); font-weight: 400; text-transform: none;">Evidence: {evidence_count}</span>'
+        f'{failure_mode_val} &nbsp;•&nbsp; <span style="color: var(--text-muted); font-weight: 400; text-transform: none;">Evidence: {evidence_count}</span>{alerts_tag}'
         f'</div>'
         f'</div>'
         f'<div style="text-align: right; display: flex; gap: 20px;">'
