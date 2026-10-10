@@ -19,15 +19,19 @@ repo_root = str(file_path.parent.parent.parent) if file_path.parent.name == "str
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
+import logging
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 from app.streamlit.components.header import render_header
 from app.streamlit.components.sidebar import render_sidebar
 from app.streamlit.components.styles import apply_industrial_theme
 from app.streamlit.components.copilot import render_copilot_chat
-from app.streamlit.services.view_service import get_facade
+from app.streamlit.services.view_service import get_facade, reset_facade
 from app.streamlit.state import init_session_state, navigate_to
 from config import get_config
+from repositories.snowflake.connection import is_session_expired_error
 from app.streamlit.views import (
     render_agent_activity_view,
     render_assets_view,
@@ -162,7 +166,30 @@ def main() -> None:
         st.stop()
 
     # 8. Global Header
-    freshness = facade.get_data_freshness() if facade else None
+    freshness = None
+    if facade:
+        try:
+            freshness = facade.get_data_freshness()
+        except Exception as exc:
+            if is_session_expired_error(exc):
+                logger.warning(
+                    "Snowflake session expired or ReauthenticationRequest during header load (%s). "
+                    "Resetting connection cache and retrying operation once...",
+                    type(exc).__name__,
+                )
+                reset_facade()
+                facade = get_facade(backend_mode=st.session_state.backend_mode)
+                try:
+                    freshness = facade.get_data_freshness()
+                except Exception as retry_exc:
+                    logger.error(
+                        "Snowflake session recovery retry failed: %s",
+                        type(retry_exc).__name__,
+                    )
+                    freshness = None
+            else:
+                logger.warning("Failed to retrieve data freshness: %s", type(exc).__name__)
+                freshness = None
     render_header(
         on_search=facade.search_entities,
         backend_mode=st.session_state.backend_mode,

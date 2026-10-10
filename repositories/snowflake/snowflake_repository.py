@@ -220,6 +220,10 @@ class SnowflakeRepository(
     def __init__(self, connection_manager: Optional[SnowflakeConnectionManager] = None) -> None:
         self.conn_mgr = connection_manager or SnowflakeConnectionManager()
 
+    def reset(self) -> None:
+        """Reset underlying Snowflake connection manager."""
+        self.conn_mgr.reset()
+
     # MachineRepository
     def get_plant(self, plant_id: str) -> Optional[Plant]:
         if not plant_id or not str(plant_id).strip():

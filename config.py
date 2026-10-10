@@ -44,6 +44,9 @@ class SnowflakeConfig:
     canonical_source_root: str = field(
         default_factory=lambda: os.getenv("COCO_FACTORY_SOURCE_ROOT", r"C:\Users\shubh\Desktop\oee_v2")
     )
+    client_session_keep_alive: bool = field(
+        default_factory=lambda: os.getenv("SNOWFLAKE_CLIENT_SESSION_KEEP_ALIVE", "true").lower() == "true"
+    )
 
     @property
     def is_configured(self) -> bool:

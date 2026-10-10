@@ -50,7 +50,7 @@ def render_asset_grid_table(
     h2.caption("**MACHINE NAME**")
     h3.caption("**LINE**")
     h4.caption("**HEALTH**")
-    h5.caption("**RISK SCORE**")
+    h5.caption("**FAILURE RISK**")
     h6.caption("**ALERTS**")
     h7.caption("**ACTION**")
 
@@ -59,7 +59,9 @@ def render_asset_grid_table(
     for item in page_items:
         m = item["machine"]
         risk = item["risk"]
-        alerts_cnt = item["active_alerts_count"]
+        alerts_cnt = item.get("active_alerts_count", 0)
+        crit_alerts_cnt = item.get("critical_alerts_count", 0)
+        is_precursor = item.get("is_precursor", False)
 
         c1, c2, c3, c4, c5, c6, c7 = st.columns([1.2, 2.5, 1.2, 1.2, 1.2, 1.2, 1.2])
 
@@ -74,12 +76,22 @@ def render_asset_grid_table(
         risk_val = f"{risk.risk_score * 100:.0f}%" if risk else "--"
         risk_color = "#dc2626" if (risk and risk.risk_score > 0.7) else ("#d97706" if (risk and risk.risk_score > 0.4) else "#16a34a")
 
-        c1.markdown(f"<div style='padding-top: 7px;'><b><code>{m.machine_id}</code></b></div>", unsafe_allow_html=True)
+        precursor_tag = " <span class='badge badge-critical' style='font-size: 9px; padding: 1px 4px; vertical-align: middle;'>PRECURSOR</span>" if is_precursor else ""
+
+        c1.markdown(f"<div style='padding-top: 7px;'><b><code>{m.machine_id}</code></b>{precursor_tag}</div>", unsafe_allow_html=True)
         c2.markdown(f"<div style='padding-top: 7px; font-weight: 500;'>{m.name}</div>", unsafe_allow_html=True)
         c3.markdown(f"<div style='padding-top: 7px;'><code>{m.line_id}</code></div>", unsafe_allow_html=True)
         c4.markdown(f"<div style='padding-top: 7px;'>{h_badge}</div>", unsafe_allow_html=True)
         c5.markdown(f"<div style='padding-top: 7px; color: {risk_color}; font-weight: 700;'>{risk_val}</div>", unsafe_allow_html=True)
-        c6.markdown(f"<div style='padding-top: 7px;'>{alerts_cnt} active</div>" if alerts_cnt > 0 else "<div style='padding-top: 7px; color: var(--text-muted);'>0</div>", unsafe_allow_html=True)
+
+        if alerts_cnt > 0:
+            if crit_alerts_cnt > 0:
+                alerts_str = f"<b>{alerts_cnt} active</b> <span style='color: #dc2626; font-size: 11px;'>({crit_alerts_cnt} crit)</span>"
+            else:
+                alerts_str = f"{alerts_cnt} active"
+            c6.markdown(f"<div style='padding-top: 7px;'>{alerts_str}</div>", unsafe_allow_html=True)
+        else:
+            c6.markdown("<div style='padding-top: 7px; color: var(--text-muted);'>0</div>", unsafe_allow_html=True)
 
         with c7:
             if st.button("Inspect", key=f"inspect_{m.machine_id}", width="stretch"):

@@ -150,6 +150,14 @@ class CommandCenterFacade:
         self._snapshot_cache = None
         self._snapshot_cache_time = None
 
+    def reset_connection(self) -> None:
+        """Reset underlying repository connection if supported."""
+        if hasattr(self.repo, "reset"):
+            self.repo.reset()
+        elif hasattr(self.repo, "conn_mgr") and hasattr(self.repo.conn_mgr, "reset"):
+            self.repo.conn_mgr.reset()
+        self.invalidate_snapshot_cache()
+
     def _ensure_initial_state(self) -> None:
         """Seed M204 active degradation state on startup so the UI renders the hero alert immediately."""
         alerts = self.repo.list_alerts(machine_id="M204", status=AlertStatus.OPEN)
@@ -605,16 +613,27 @@ class CommandCenterFacade:
         machines_map = {m.machine_id: m for m in machines}
         all_m_ids = [m.machine_id for m in machines]
 
-        critical_count = sum(1 for m in machines if m.health_status == HealthStatus.CRITICAL)
-        warning_count = sum(1 for m in machines if m.health_status == HealthStatus.DEGRADING)
-
-        # 2. Active / Open Alerts
-        all_alerts = self.repo.list_alerts(status=AlertStatus.OPEN)
+        # 2. Active Alerts (Open + Investigating/Acknowledged)
+        open_alerts = self.repo.list_alerts(status=AlertStatus.OPEN)
         q_count += 1
+        inv_alerts = self.repo.list_alerts(status=AlertStatus.INVESTIGATING)
+        q_count += 1
+        seen_alert_ids = set()
+        all_alerts: List[Alert] = []
+        for a in open_alerts + inv_alerts:
+            if a.alert_id not in seen_alert_ids:
+                seen_alert_ids.add(a.alert_id)
+                all_alerts.append(a)
+
         alert_counts: Dict[str, int] = {}
+        crit_alert_counts: Dict[str, int] = {}
         for a in all_alerts:
             if a.machine_id:
                 alert_counts[a.machine_id] = alert_counts.get(a.machine_id, 0) + 1
+                if a.severity == Severity.CRITICAL:
+                    crit_alert_counts[a.machine_id] = crit_alert_counts.get(a.machine_id, 0) + 1
+
+        critical_alerts_count = sum(1 for a in all_alerts if a.severity == Severity.CRITICAL)
 
         # 3. Open Work Orders
         work_orders = self.repo.list_work_orders()
@@ -641,19 +660,65 @@ class CommandCenterFacade:
         risks_map = self.repo.get_latest_failure_risks(all_m_ids) if all_m_ids else {}
         q_count += 1
 
+        # Synchronize machine operational health status with canonical analytics foundation rules:
+        # (failure_prob >= 0.85 or critical alerts => CRITICAL; failure_prob >= 0.60 or active alerts => DEGRADING/WARNING)
+        for m in machines:
+            m_risk = risks_map.get(m.machine_id)
+            r_score = m_risk.risk_score if m_risk else 0.0
+            crit_c = crit_alert_counts.get(m.machine_id, 0)
+            act_c = alert_counts.get(m.machine_id, 0)
+            if r_score >= 0.85 or crit_c > 0 or m.health_status == HealthStatus.CRITICAL:
+                m.health_status = HealthStatus.CRITICAL
+            elif r_score >= 0.60 or act_c > 0 or m.health_status == HealthStatus.DEGRADING:
+                m.health_status = HealthStatus.DEGRADING
+
+        critical_count = sum(1 for m in machines if m.health_status == HealthStatus.CRITICAL)
+        warning_count = sum(1 for m in machines if m.health_status == HealthStatus.DEGRADING)
+        machines_at_risk_count = critical_count + warning_count
+
         # 6. Active Investigations
         investigations = self.repo.list_investigations()
         q_count += 1
         invs_by_alert = {inv.alert_id: inv for inv in investigations if getattr(inv, "alert_id", None)}
         invs_by_machine = {inv.machine_id: inv for inv in investigations if getattr(inv, "machine_id", None)}
 
-        # 7. Precursor / Critical Alerts (Hero Alert Cards)
-        critical_alerts = [a for a in all_alerts if a.severity in (Severity.CRITICAL, Severity.HIGH)]
-        sorted_critical = sorted(
-            critical_alerts,
-            key=lambda a: (0 if a.severity == Severity.CRITICAL else 1, -getattr(a, "priority_score", 0.0)),
+        # 7. Active Failure Precursors & Threat Identification (Hero Alert Cards)
+        # Rank by predictive failure probability & alert severity so high-threat assets
+        # (e.g. M21 @ 95%, M05 @ 91%, M15 @ 78.4% or active critical alerts) are prioritized
+        alerts_by_machine: Dict[str, Alert] = {}
+        threat_scores: Dict[str, float] = {}
+        for a in all_alerts:
+            if not a.machine_id:
+                continue
+            m_id = a.machine_id
+            r = risks_map.get(m_id)
+            r_score = r.risk_score if r else 0.0
+            sev_weight = 10.0 if a.severity == Severity.CRITICAL else 5.0
+            a_risk = (a.risk_score / 100.0) if getattr(a, "risk_score", 0.0) > 1.0 else getattr(a, "risk_score", 0.0)
+            score = (r_score * 100.0) + sev_weight + (a_risk * 10.0)
+            if m_id not in threat_scores or score > threat_scores[m_id]:
+                threat_scores[m_id] = score
+                alerts_by_machine[m_id] = a
+
+        # Deterministic ranking: primary threat score, secondary failure risk, tertiary alert count, quaternary machine ID
+        sorted_threat_mids = sorted(
+            threat_scores.keys(),
+            key=lambda mid: (
+                threat_scores[mid],
+                risks_map[mid].risk_score if mid in risks_map else 0.0,
+                alert_counts.get(mid, 0),
+                mid,
+            ),
+            reverse=True,
         )
-        precursor_alerts = sorted_critical[:3]
+        precursor_alerts = [alerts_by_machine[mid] for mid in sorted_threat_mids[:3]]
+        if len(precursor_alerts) < 3 and len(all_alerts) > len(precursor_alerts):
+            for a in all_alerts:
+                if a not in precursor_alerts:
+                    precursor_alerts.append(a)
+                if len(precursor_alerts) == 3:
+                    break
+
         crit_m_ids = list({a.machine_id for a in precursor_alerts if a.machine_id})
 
         # 8. Batched Predictions & Features for Precursors
@@ -687,14 +752,24 @@ class CommandCenterFacade:
             }
 
         # Build in-memory KPIs
+        affected_lines = len({
+            m.line_id for m in machines
+            if m.line_id and (
+                m.health_status in (HealthStatus.CRITICAL, HealthStatus.DEGRADING)
+                or alert_counts.get(m.machine_id, 0) > 0
+            )
+        })
         kpis = {
             "oee": oee_summary["oee"],
             "availability": oee_summary["availability"],
             "performance": oee_summary["performance"],
             "quality": oee_summary["quality"],
+            "critical_alerts": critical_alerts_count,
             "active_alerts": len(all_alerts),
             "critical_assets": critical_count,
             "warning_assets": warning_count,
+            "machines_at_risk": machines_at_risk_count,
+            "affected_lines": affected_lines,
             "open_work_orders": open_wo,
             "pending_approvals": len(approvals),
             "total_machines": len(machines),
@@ -732,23 +807,30 @@ class CommandCenterFacade:
                 "prediction": p,
                 "investigation": inv,
                 "pending_approval": app,
+                "active_alerts_count": alert_counts.get(a.machine_id, 0),
+                "critical_alerts_count": crit_alert_counts.get(a.machine_id, 0),
             })
 
         # Build in-memory Asset Grid
         full_grid = []
+        precursor_mids = {a.machine_id for a in precursor_alerts if a.machine_id}
         for m in machines:
             full_grid.append({
                 "machine": m,
                 "risk": risks_map.get(m.machine_id),
                 "features": None,
                 "active_alerts_count": alert_counts.get(m.machine_id, 0),
+                "critical_alerts_count": crit_alert_counts.get(m.machine_id, 0),
+                "is_precursor": m.machine_id in precursor_mids,
                 "open_work_orders_count": 0,
             })
         full_grid = sorted(
             full_grid,
             key=lambda x: (
                 0 if x["machine"].health_status == HealthStatus.CRITICAL
-                else (1 if x["machine"].health_status == HealthStatus.DEGRADING else 2)
+                else (1 if x["machine"].health_status == HealthStatus.DEGRADING else 2),
+                -(x["risk"].risk_score if x["risk"] else 0.0),
+                -(x["active_alerts_count"]),
             ),
         )
 
@@ -1105,3 +1187,15 @@ class CommandCenterFacade:
 def get_facade(backend_mode: str = "in_memory") -> CommandCenterFacade:
     """Return cached facade instance bound to active backend."""
     return CommandCenterFacade(backend_mode=backend_mode)
+
+
+def reset_facade() -> None:
+    """Reset cached facade and underlying connections in Streamlit."""
+    try:
+        get_facade.clear()
+    except Exception:
+        pass
+    try:
+        st.cache_resource.clear()
+    except Exception:
+        pass

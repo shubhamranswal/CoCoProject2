@@ -52,6 +52,162 @@ class SnowflakeSessionVerification:
     checked_at: Optional[datetime] = None
 
 
+def is_session_expired_error(exc: Optional[BaseException]) -> bool:
+    """Determine whether an exception is caused by session expiration or ReauthenticationRequest."""
+    if exc is None:
+        return False
+
+    cls_name = exc.__class__.__name__
+    if "reauthentication" in cls_name.lower():
+        return True
+
+    # Snowflake error codes indicating session or authentication expiration
+    expired_codes = {
+        252007,  # ER_FAILED_TO_RENEW_SESSION
+        390110,  # ID_TOKEN_EXPIRED_GS_CODE
+        390112,  # SESSION_EXPIRED_GS_CODE
+        390113,  # MASTER_TOKEN_NOTFOUND_GS_CODE
+        390114,  # MASTER_TOKEN_EXPIRED_GS_CODE
+        390115,  # MASTER_TOKEN_INVALD_GS_CODE
+        390195,  # ID_TOKEN_INVALID_LOGIN_REQUEST_GS_CODE
+        390318,  # OAUTH_ACCESS_TOKEN_EXPIRED_GS_CODE
+        390400,  # BAD_REQUEST_GS_CODE (during renew)
+        "252007",
+        "390110",
+        "390112",
+        "390113",
+        "390114",
+        "390115",
+        "390195",
+        "390318",
+        "390400",
+    }
+    errno = getattr(exc, "errno", None) or getattr(exc, "code", None)
+    if errno in expired_codes:
+        return True
+
+    msg = str(getattr(exc, "msg", "") or str(exc)).lower()
+    session_keywords = (
+        "reauthenticationrequest",
+        "reauthentication",
+        "renew_session",
+        "failed to renew session",
+        "session has expired",
+        "session no longer exists",
+        "session expired",
+        "session is closed",
+        "master token expired",
+        "token has expired",
+        "token is invalid",
+        "id token expired",
+    )
+    if any(kw in msg for kw in session_keywords):
+        return True
+
+    cause = getattr(exc, "cause", None) or getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+    if cause is not None and cause is not exc:
+        return is_session_expired_error(cause)
+
+    return False
+
+
+class _PooledCursorProxy:
+    """Cursor proxy that intercepts queries and automatically retries once on session expiration."""
+
+    def __init__(self, real_cursor: Any, conn_proxy: _PooledConnectionProxy) -> None:
+        self._real_cursor = real_cursor
+        self._conn_proxy = conn_proxy
+
+    def execute(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return self._real_cursor.execute(*args, **kwargs)
+        except Exception as exc:
+            if is_session_expired_error(exc):
+                logger.warning(
+                    "Snowflake session expired or ReauthenticationRequest detected (%s). "
+                    "Resetting connection and retrying operation once...",
+                    type(exc).__name__,
+                )
+                new_conn = self._conn_proxy._manager.reconnect()
+                self._conn_proxy._real_conn = new_conn
+                self._real_cursor = new_conn.cursor()
+                return self._real_cursor.execute(*args, **kwargs)
+            raise
+
+    def executemany(self, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return self._real_cursor.executemany(*args, **kwargs)
+        except Exception as exc:
+            if is_session_expired_error(exc):
+                logger.warning(
+                    "Snowflake session expired or ReauthenticationRequest detected during executemany (%s). "
+                    "Resetting connection and retrying operation once...",
+                    type(exc).__name__,
+                )
+                new_conn = self._conn_proxy._manager.reconnect()
+                self._conn_proxy._real_conn = new_conn
+                self._real_cursor = new_conn.cursor()
+                return self._real_cursor.executemany(*args, **kwargs)
+            raise
+
+    def fetchone(self) -> Any:
+        try:
+            return self._real_cursor.fetchone()
+        except Exception as exc:
+            if is_session_expired_error(exc):
+                logger.warning(
+                    "Snowflake session expired during fetchone (%s). Resetting connection.",
+                    type(exc).__name__,
+                )
+                self._conn_proxy._manager.reset()
+            raise
+
+    def fetchmany(self, size: Optional[int] = None) -> Any:
+        try:
+            return self._real_cursor.fetchmany(size) if size is not None else self._real_cursor.fetchmany()
+        except Exception as exc:
+            if is_session_expired_error(exc):
+                logger.warning(
+                    "Snowflake session expired during fetchmany (%s). Resetting connection.",
+                    type(exc).__name__,
+                )
+                self._conn_proxy._manager.reset()
+            raise
+
+    def fetchall(self) -> Any:
+        try:
+            return self._real_cursor.fetchall()
+        except Exception as exc:
+            if is_session_expired_error(exc):
+                logger.warning(
+                    "Snowflake session expired during fetchall (%s). Resetting connection.",
+                    type(exc).__name__,
+                )
+                self._conn_proxy._manager.reset()
+            raise
+
+    def close(self) -> None:
+        try:
+            self._real_cursor.close()
+        except Exception:
+            pass
+
+    def __iter__(self) -> Any:
+        return iter(self._real_cursor)
+
+    def __next__(self) -> Any:
+        return next(self._real_cursor)
+
+    def __enter__(self) -> _PooledCursorProxy:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        self.close()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real_cursor, name)
+
+
 class _PooledConnectionProxy:
     """Lightweight connection proxy that keeps the physical Snowflake connection alive across queries."""
 
@@ -60,17 +216,58 @@ class _PooledConnectionProxy:
         self._manager = manager
 
     def cursor(self, *args: Any, **kwargs: Any) -> Any:
-        return self._real_conn.cursor(*args, **kwargs)
+        try:
+            cur = self._real_conn.cursor(*args, **kwargs)
+            return _PooledCursorProxy(cur, self)
+        except Exception as exc:
+            if is_session_expired_error(exc):
+                logger.warning(
+                    "Snowflake session expired while creating cursor (%s). "
+                    "Resetting connection and recreating cursor once...",
+                    type(exc).__name__,
+                )
+                self._real_conn = self._manager.reconnect()
+                cur = self._real_conn.cursor(*args, **kwargs)
+                return _PooledCursorProxy(cur, self)
+            raise
 
     def commit(self) -> None:
-        self._real_conn.commit()
+        try:
+            self._real_conn.commit()
+        except Exception as exc:
+            if is_session_expired_error(exc):
+                logger.warning(
+                    "Snowflake session expired during commit (%s). Resetting connection.",
+                    type(exc).__name__,
+                )
+                self._manager.reset()
+            raise
 
     def rollback(self) -> None:
-        self._real_conn.rollback()
+        try:
+            self._real_conn.rollback()
+        except Exception as exc:
+            if is_session_expired_error(exc):
+                logger.warning(
+                    "Snowflake session expired during rollback (%s). Resetting connection.",
+                    type(exc).__name__,
+                )
+                self._manager.reset()
+            raise
+
+    def reset(self) -> None:
+        """Reset underlying connection manager and discard this cached connection."""
+        self._manager.reset()
 
     def close(self) -> None:
         # Prevent premature socket termination across queries
         pass
+
+    def __enter__(self) -> _PooledConnectionProxy:
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        self.close()
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._real_conn, name)
@@ -151,6 +348,9 @@ class SnowflakeConnectionManager:
             "network_timeout": network_timeout,
         }
 
+        if getattr(self.config, "client_session_keep_alive", True):
+            params["client_session_keep_alive"] = True
+
         if include_database:
             if self.config.database:
                 params["database"] = self.config.database
@@ -221,16 +421,43 @@ class SnowflakeConnectionManager:
         with self._lock:
             if self._connection is not None:
                 try:
-                    is_closed_fn = getattr(self._connection, "is_closed", None)
-                    if is_closed_fn and not is_closed_fn():
-                        return _PooledConnectionProxy(self._connection, self)
-                    elif is_closed_fn is None:
-                        return _PooledConnectionProxy(self._connection, self)
+                    if getattr(self._connection, "expired", False):
+                        logger.warning("Cached Snowflake connection marked expired. Discarding stale connection.")
+                        self._connection = None
+                    else:
+                        is_closed_fn = getattr(self._connection, "is_closed", None)
+                        if is_closed_fn and is_closed_fn():
+                            logger.info("Cached Snowflake connection is closed. Discarding stale connection.")
+                            self._connection = None
+                        else:
+                            return _PooledConnectionProxy(self._connection, self)
                 except Exception:
                     self._connection = None
 
             self._connection = self._create_new_connection(bootstrap=False)
             return _PooledConnectionProxy(self._connection, self)
+
+    def reset(self) -> None:
+        """Explicitly reset and terminate cached connection to force recreation on next use.
+
+        Follows Streamlit's connection reset semantics for stale/expired sessions.
+        """
+        self.close()
+        logger.info("Snowflake connection cache reset.")
+
+    def reconnect(self, bootstrap: bool = False) -> Any:
+        """Force recreate the underlying physical connection, safely closing the stale one."""
+        with self._lock:
+            if self._connection is not None:
+                try:
+                    self._connection.close()
+                except Exception:
+                    pass
+                self._connection = None
+            self._connection = self._create_new_connection(bootstrap=bootstrap)
+            self._last_successful_query = datetime.now(timezone.utc)
+            logger.info("Snowflake physical connection successfully reconnected.")
+            return self._connection
 
     def close(self) -> None:
         """Explicitly terminate physical pooled connection."""
@@ -385,3 +612,14 @@ class SnowflakeConnectionManager:
                 latency_ms=round(latency, 2),
                 error_message=err_msg,
             )
+
+
+__all__ = [
+    "SnowflakeConnectionManager",
+    "SnowflakeHealthStatus",
+    "SnowflakeSessionVerification",
+    "is_session_expired_error",
+    "_PooledConnectionProxy",
+    "_PooledCursorProxy",
+]
+
